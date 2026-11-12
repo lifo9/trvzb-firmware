@@ -1,0 +1,13 @@
+# The header version differs from the stock SoC application's built-in 5124:
+# flash only with the ABORT extension loaded, or the SoC re-installs it on
+# every boot (docs/update-and-recovery.md).
+# Acceptance canary: stock code with the letter L drawn as 8, so the child-lock
+# screen reads 8C. Proves whether the application MCU accepts a delivered
+# image, and whether 0xfc11 attribute 0x0011 follows the running MCU version.
+
+id = "1.4.7-canary"
+stock_sha512 = "c7640e2a238ab9807b77d36abc4b9e58d64c99a8fe8ac8d6246f48760bc85a2aec5c446630c94dd2e85fe3fe088011eccc992e543183b74ede7e061ae6f324b3"
+mcu_version = "1.3.3"
+file_version = 0x1407
+patch_set = "patches/canary-letter-l"
+sha512 = "310cbcd53861b692b0a2ce2b1a3d41ffa957971ad4b0efaf943b2b2b13a1987b5246a09cdfa2ca6eff6ba391da781f05de88156134c9a3c399d5803a4a7471e3"
