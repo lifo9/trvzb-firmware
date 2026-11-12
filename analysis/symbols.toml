@@ -421,6 +421,13 @@ name = "code_cave"
 start = 0x7948
 end = 0x7a08
 
+# The A-Z glyphs of the 7-segment font. Read straight from flash by the
+# renderer; changing a glyph changes only how that letter looks.
+[[region]]
+name = "letter_font"
+start = 0x7829
+end = 0x7843
+
 # --- Never patch ------------------------------------------------------------------
 # The update path lives in the image being replaced; breaking it leaves no
 # over-the-air way back.

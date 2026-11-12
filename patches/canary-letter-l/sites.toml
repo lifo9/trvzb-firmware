@@ -1,0 +1,7 @@
+name = "canary-letter-l"
+regions = ["letter_font"]
+
+[[site]]
+name = "letter_l_glyph"
+offset = 0x7834
+max_length = 1
