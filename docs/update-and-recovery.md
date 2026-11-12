@@ -67,7 +67,8 @@ presumably chosen by the bitmap's parity — **inferred**.
 - **The checksum is chosen by the Zigbee SoC.** The expected sum arrives in
   the notification frame. Whether the SoC computes it over the bytes it sends
   (modified payloads pass) or carries a precomputed value (any modified payload
-  fails, harmlessly) is unknown — experiment 1 decides it.
+  fails) is unknown. Experiment 1 did not decide it: the MCU restarts on both
+  outcomes. A patch with visible behaviour is the first real test.
 - **The update code lives in the image being replaced.** A patched image that
   breaks booting, the UART link or the update handlers leaves no over-the-air
   path back.
@@ -76,7 +77,8 @@ presumably chosen by the bitmap's parity — **inferred**.
 
 | Mode | Effect | Recovery | Risk |
 |---|---|---|---|
-| Transfer checksum or version gate rejects the image | Nothing is committed; the running firmware stays | none needed | none |
+| Version gate rejects the notification | Nothing is written; the running firmware stays | none needed | none |
+| Transfer checksum fails | The inactive slot is already overwritten; the bitmap is not committed; settings `+5` is set, saved, and the MCU restarts | presumably boots the old slot again — **inferred** | low |
 | Patched app boots but misbehaves, update path intact | MCU still answers the Zigbee SoC | flash re-labelled stock with a higher version | low |
 | Patched app fails to boot, hangs early, or breaks the UART or update code | Zigbee SoC stays on the network, datapoints go stale | none over the air; SWD pads, if enabled, could restore the previous slot by rewriting the bitmap | high |
 | Power loss mid-write | The slot being written is incomplete, the bitmap not yet committed | presumably the old slot keeps booting — **inferred** | low |

@@ -203,7 +203,7 @@ summary = "Writes one update block to code flash at slot base + offset"
 name = "clamp"
 offset = 0x7148
 confidence = "high"
-summary = "(value, maximum, minimum, ...): used by the knob path"
+summary = "(value, minimum, maximum, wrap): returns minimum below and maximum above, or the opposite end when wrap is set; signed compare"
 
 # --- Code locations inside functions ------------------------------------------
 

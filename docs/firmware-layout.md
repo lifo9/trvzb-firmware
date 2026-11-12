@@ -107,6 +107,6 @@ length, routine; sources are MCU addresses):
 | `0x20000348` | Main runtime/control struct (thermostat loop enable at `+0xc`) |
 | `0x200003a8` | Valve layer: target % `+6`, current % `+7`, total travel steps `+0x34` |
 | `0x200002d6` | Motor layer: commanded steps `+0x1a`, steps taken `+0x1c` |
-| `0x2000043e` | UI edit state: pending value `+3`, screen-awake flag `+1` |
+| `0x2000043e` | UI edit state: pending value `+3`; `+1` is a wake-timer flag used only outside the running state (the display-awake gate is in the event producer, `0xdf8`) |
 | `0x200002c3` | Display framebuffer, 8 bytes, shadow copy at `+8` |
 | `0x200005fc` | Input channels, 8-byte stride |

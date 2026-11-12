@@ -21,8 +21,9 @@ for it; the MCU checks a transfer sum supplied by the Zigbee SoC. See
 - Analysis: datapoint map, thermostat → valve → motor chain, knob path and
   display decoded.
 - Delivery: a rebuilt OTA can be served through Zigbee2MQTT's local index.
-- Acceptance test: a version-strings-only image was accepted and installed by
-  a real valve (release `1.4.5-verstest`) — see
+- Acceptance test: a real valve's Zigbee side accepted and installed a
+  version-strings-only image (release `1.4.5-verstest`); whether the MCU took
+  its part is not yet known — see
   [docs/experiments.md](docs/experiments.md).
 - Tooling: patch sets assembled per slot with binutils, verified against
   stock, stock knob behaviour pinned under emulation.

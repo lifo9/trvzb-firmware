@@ -43,13 +43,17 @@ stays `1.4.4`, since the SoC image itself is unchanged.
 100, child lock on): data flash was not touched. Battery 69 % → 65 %: one
 flash costs about 4 %.
 
-**Was the MCU part written?** Not directly observable: Zigbee2MQTT exposes no
-application-MCU version. Indirect evidence says yes: the motor calibration
-values changed (idle steps 297 → 314, closing steps 343 → 342), as they would
-if the MCU restarted into new firmware and re-ran its travel calibration. That
-is consistent with the update path committing and restarting, but it is not
-proof. If the MCU did take `1.3.2`, it now refuses stock `1.3.1`.
+**Was the MCU part written? Unknown.** Zigbee2MQTT exposes no
+application-MCU version. The motor calibration values changed (idle steps
+297 → 314, closing steps 343 → 342), which shows the MCU restarted and re-ran
+its travel calibration, but both outcomes restart it: on a transfer failure
+(`0x53d2`–`0x53e6`) the MCU sets settings `+5`, saves, and reaches the same
+reset (`0x1d9c`) as the success path. So the device runs either `1.3.1` (stock,
+checksum rejected) or `1.3.2`. Until that is known, plan the next MCU version
+above `1.3.2`, and do not assume stock `1.3.1` would be refused or accepted.
+The knob patch's visible behaviour will be the first real observable.
 
-**Still open:** an observable for the MCU version. Candidate: Zigbee2MQTT's
-generic `read` converter on `genBasic` and the manufacturer cluster `0xfc11`,
-looking for an attribute that carries it.
+**Still open:** an observable for the MCU version or the failure flag in
+settings `+5`. Candidate: Zigbee2MQTT's generic `read` converter on `genBasic`
+and the manufacturer cluster `0xfc11`, looking for an attribute that carries
+either.
