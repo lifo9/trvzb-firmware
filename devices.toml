@@ -1,5 +1,6 @@
 # Every flashed valve and every flash, oldest first. The application MCU only
-# accepts a strictly higher version and has about 64 updates in its life (see
+# accepts a strictly higher version, and every 64 successful updates it resets
+# its update bitmap through a branch nobody has verified yet (see
 # docs/update-and-recovery.md), so this log is the record of both. A release's
 # MCU version must be above the installed one on every valve it goes to.
 # `mcu_version` is the version a flash offered; when installation is not

@@ -60,10 +60,12 @@ presumably chosen by the bitmap's parity — **inferred**.
 - **Versions only go up.** A device that has accepted MCU version `1.3.2`
   refuses stock `1.3.1`. Returning to Sonoff's code means stock code re-labelled
   with a higher version. Every flash consumes a version number.
-- **About 64 updates per device.** Each update clears one bit of the bitmap.
-  When none are left, a separate branch (`0x7048`–`0x7076`) erases and rewrites
-  the bitmap; whether that branch keeps the slot parity right is unverified.
-  Experiments should be frugal.
+- **Every 64th update runs unverified code.** Each successful update clears
+  one bit of the 64-bit bitmap; a rejected transfer clears none. When none are
+  left, a separate branch (`0x7048`–`0x7076`) erases and rewrites the bitmap,
+  so 64 is not a lifetime cap, but whether that branch keeps the slot parity
+  right is unverified. Flash wear is not the limit either. Experiments should
+  still be frugal: each flash also costs about 4 % battery.
 - **The checksum is chosen by the Zigbee SoC.** The expected sum arrives in
   the notification frame. Whether the SoC computes it over the bytes it sends
   (modified payloads pass) or carries a precomputed value (any modified payload
