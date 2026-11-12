@@ -1,0 +1,12 @@
+.claude/settings.local.json
+.claude/worktrees/
+
+# direnv / nix-direnv cache
+.direnv/
+
+# Python tooling
+__pycache__/
+*.py[cod]
+
+# Vendor firmware and build output: fetched by `just fetch`, never committed
+work/
