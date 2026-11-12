@@ -10,3 +10,4 @@ stock_sha512 = "c7640e2a238ab9807b77d36abc4b9e58d64c99a8fe8ac8d6246f48760bc85a2a
 mcu_version = "1.3.4"
 file_version = 0x1408
 patch_set = "patches/knob-valve-percent"
+sha512 = "c5284248aba199667a763457612907673255bd222bc1f06c621d8e5553b4fb38f49584e461cee980d1c1ca9d9b8cefbda107c47b4567fd7fd9ea42557a509a32"
