@@ -34,6 +34,7 @@ from unicorn.arm_const import (
 )
 
 from trvzb.image import Slot
+from trvzb.patch import PatchSet
 
 FLASH_SIZE = 0x10000
 RAM_BASE = 0x20000000
@@ -103,6 +104,21 @@ class FirmwareEmulator:
             engine.reg_write(register, clobbered_value)
         engine.reg_write(UC_ARM_REG_APSR_NZCV, self.clobbered_flags)
         engine.reg_write(UC_ARM_REG_PC, engine.reg_read(UC_ARM_REG_LR))
+
+    def apply_patch_set(self, patch_set: PatchSet) -> None:
+        """Write a built patch set's bytes for this emulator's slot and run them instead of stubbing.
+
+        Takes the same PatchSet the image is built from, so tests and the
+        flashed image cannot diverge.
+        """
+        for site in patch_set.sites:
+            self.write_code(site.offset, site.patched_bytes[self.slot.name])
+            self.patched_ranges.append((site.offset, site.length))
+        self.stubbed_starts = {
+            start
+            for start in self.function_starts - self.allowed_functions
+            if not any(patch_start <= start < patch_start + length for patch_start, length in self.patched_ranges)
+        }
 
     def write_code(self, image_offset: int, code: bytes) -> None:
         """Place code at an image offset in this emulator's slot, e.g. a patch site."""

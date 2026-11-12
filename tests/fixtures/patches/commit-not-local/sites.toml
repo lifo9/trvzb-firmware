@@ -1,0 +1,7 @@
+name = "commit-not-local"
+regions = ["ui_main_screen"]
+
+[[site]]
+name = "knob_commit"
+offset = 0x31a0
+max_length = 6

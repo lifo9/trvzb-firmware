@@ -76,7 +76,7 @@ def synthetic_ota(tmp_path: Path) -> SyntheticOta:
     return SyntheticOta(path=path, data=data, mcu_payload_start=mcu_payload_start, slot_length=SYNTHETIC_SLOT_LENGTH)
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def stock_ota_path() -> Path:
     path = Path(os.environ.get("TRVZB_OTA", REPOSITORY_ROOT / "work" / "trvzb_v1.4.4.ota"))
     if not path.exists():
