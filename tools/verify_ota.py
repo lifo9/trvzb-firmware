@@ -23,8 +23,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-import capstone
-
 # The tools run under `python3 -I` because they read untrusted firmware files,
 # and isolated mode leaves the repository off the import path.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -32,12 +30,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from build_release import load_manifest  # noqa: E402
 from firmware_map import FirmwareMap  # noqa: E402
-from trvzb.image import SLOT_A, SLOT_B  # noqa: E402
 from trvzb.ota import STOCK_OTA_PATH, OtaFile  # noqa: E402
-from trvzb.patch import SLOT_NAMES, PatchSet  # noqa: E402
+from trvzb.patch import PatchSet  # noqa: E402
 from trvzb.version import McuVersion  # noqa: E402
 from trvzb.verify import (  # noqa: E402
     branch_targets_outside_functions,
+    branches_leaving_sites,
+    image_calls_overlapping_sites,
+    site_listing_from_image,
     site_bytes_mismatches,
     site_ranges,
     site_slot_differences,
@@ -47,27 +47,14 @@ from trvzb.verify import (  # noqa: E402
     version_consistency,
 )
 
-SLOTS = {"A": SLOT_A, "B": SLOT_B}
-
-
-def stock_function_starts(stock: OtaFile) -> set[int]:
+def stock_code_map(stock: OtaFile) -> tuple[set[int], set[int]]:
+    """Function starts and instruction starts of the stock slot A image."""
     with tempfile.TemporaryDirectory() as temporary_directory:
         slot_path = Path(temporary_directory) / "stock_slot_a.bin"
         slot_path.write_bytes(slot_bytes(stock, "A"))
-        return set(FirmwareMap(str(slot_path)).functions)
-
-
-def site_listing(patch_set: PatchSet) -> list[str]:
-    disassembler = capstone.Cs(capstone.CS_ARCH_ARM, capstone.CS_MODE_THUMB | capstone.CS_MODE_MCLASS)
-    disassembler.skipdata = True
-    lines = []
-    for site in patch_set.sites:
-        for slot_name in SLOT_NAMES:
-            mcu_start = SLOTS[slot_name].mcu_address(site.offset)
-            lines.append(f"--- site {site.name}, slot {slot_name}, image {site.offset:#x}, MCU {mcu_start:#x}")
-            for decoded in disassembler.disasm(site.patched_bytes[slot_name], mcu_start):
-                lines.append(f"  {decoded.address:#07x}  {decoded.mnemonic} {decoded.op_str}")
-    return lines
+        firmware = FirmwareMap(str(slot_path))
+    instruction_starts = {address for function in firmware.functions.values() for address in function.instructions}
+    return set(firmware.functions), instruction_starts
 
 
 def main() -> None:
@@ -85,12 +72,15 @@ def main() -> None:
     version_offsets = stock.find_in_slot_a(stock_version_text.encode())
     allowed = site_ranges(patch_set, version_offsets, len(stock_version_text))
 
+    function_starts, instruction_starts = stock_code_map(stock)
     checks = {
         "image holds the reviewed site bytes": site_bytes_mismatches(built, patch_set),
         "only declared bytes changed": unexpected_changes(stock, built, allowed),
         "no site splits a stock call": sites_splitting_stock_calls(patch_set, slot_bytes(stock, "A")),
         "site bytes differ between slots only by relocation": site_slot_differences(patch_set),
-        "every bl lands on a function start": branch_targets_outside_functions(patch_set, stock_function_starts(stock)),
+        "every bl lands on a function start": branch_targets_outside_functions(patch_set, function_starts),
+        "image calls overlapping a site land on a function start": image_calls_overlapping_sites(built, patch_set, function_starts),
+        "branches leaving a site land on a stock instruction": branches_leaving_sites(built, patch_set, instruction_starts),
         "MCU version consistent and raised": version_consistency(stock, built, version_offsets),
     }
     if arguments.manifest:
@@ -106,7 +96,7 @@ def main() -> None:
             checks["image is the recorded release"] = (
                 [] if built_sha512 == manifest.sha512 else [f"image {built_sha512[:16]}…, manifest records {manifest.sha512[:16]}…"]
             )
-    for line in site_listing(patch_set):
+    for line in site_listing_from_image(built, patch_set):
         print(line)
     print()
     failed = False

@@ -17,6 +17,7 @@ from trvzb.patch import PatchSet, PatchSite
 from trvzb.symbols import load_symbols
 from trvzb.verify import (
     branch_targets_outside_functions,
+    image_calls_overlapping_sites,
     site_bytes_mismatches,
     site_slot_differences,
     sites_splitting_stock_calls,
@@ -82,7 +83,7 @@ def test_main__passes_an_identity_build(stock_ota_path: Path, tmp_path: Path) ->
         env=environment, capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert result.stdout.count("PASS") == 6
+    assert result.stdout.count("PASS") == 8
 
 
 def test_site_bytes_mismatches__flags_an_image_built_from_a_different_patch(synthetic_ota: SyntheticOta) -> None:
@@ -120,3 +121,25 @@ def test_main__with_manifest_fails_an_image_that_is_not_the_recorded_release(sto
     )
     assert result.returncode != 0
     assert "FAIL  image is the recorded release" in result.stdout
+
+
+@pytest.mark.parametrize("site_offset, site_length", [(0x31A2, 1), (0x31A5, 1), (0x31A3, 2)])
+def test_sites_splitting_stock_calls__flags_any_boundary_inside_a_call(
+    stock_slot_a_path: Path, site_offset: int, site_length: int
+) -> None:
+    stock_slot_a = stock_slot_a_path.read_bytes()
+    original = stock_slot_a[site_offset : site_offset + site_length]
+    partial = PatchSite("partial", site_offset, {"A": original, "B": original}, {"A": original, "B": original})
+    assert sites_splitting_stock_calls(PatchSet("partial", [partial]), stock_slot_a)
+
+
+def test_image_calls_overlapping_sites__decodes_calls_from_the_built_image(synthetic_ota: SyntheticOta) -> None:
+    built = OtaFile(str(synthetic_ota.path))
+    call_offset = 0x100
+    for slot_name in ("A", "B"):
+        start = built.slot_offset(slot_name) + call_offset
+        built.data[start : start + 4] = encode_branch_with_link(call_offset, 0x180)
+    one_byte_site = PatchSite("one_byte", call_offset + 1, {"A": b"\x00", "B": b"\x00"}, {"A": b"\x00", "B": b"\x00"})
+    patch_set = PatchSet("one_byte", [one_byte_site])
+    assert image_calls_overlapping_sites(built, patch_set, function_starts={0x170})
+    assert not image_calls_overlapping_sites(built, patch_set, function_starts={0x180})

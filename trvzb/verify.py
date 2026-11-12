@@ -5,7 +5,10 @@ Each check returns a list of problems; an empty list means it passed.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
+
+import capstone
 
 from trvzb.image import SLOT_A, SLOT_ADDRESS_DELTA, SLOT_B, decode_branch_with_link_target, iterate_call_sites
 from trvzb.ota import FILE_VERSION_OFFSET, HEADER_STRING_LENGTH, HEADER_STRING_OFFSET, OtaFile
@@ -63,18 +66,72 @@ def site_bytes_mismatches(built: OtaFile, patch_set: PatchSet) -> list[str]:
 
 
 def sites_splitting_stock_calls(patch_set: PatchSet, stock_slot_a: bytes) -> list[str]:
-    """Sites that start or end inside a stock 32-bit `bl`, leaving half of it behind.
+    """Sites that start or end anywhere inside a stock 32-bit `bl`.
 
-    Thumb-1 code is halfword-aligned, and `bl` is the only 32-bit instruction
-    this image uses in code, so a site boundary inside one splits it.
+    A boundary one, two or three bytes into a call leaves part of it behind
+    and turns it into a call somewhere else. (`dsb` is the image's only other
+    32-bit instruction; both sit inside the protected reset routine.)
     """
     call_sites = {call_site for call_site, _ in iterate_call_sites(stock_slot_a)}
     problems = []
     for site in patch_set.sites:
         for boundary_name, boundary in (("start", site.offset), ("end", site.offset + site.length)):
-            if boundary - 2 in call_sites:
-                problems.append(f"site {site.name} {boundary_name} {boundary:#x} splits the stock bl at {boundary - 2:#x}")
+            for call_site in (boundary - 3, boundary - 2, boundary - 1):
+                if call_site in call_sites:
+                    problems.append(f"site {site.name} {boundary_name} {boundary:#x} falls inside the stock bl at {call_site:#x}")
     return problems
+
+
+def image_calls_overlapping_sites(built: OtaFile, patch_set: PatchSet, function_starts: set[int]) -> list[str]:
+    """Calls in the built image that overlap a site and do not land on a function start.
+
+    Decoded from the image itself, so a call only partly covered by a site, or
+    changed some other way, is checked as the MCU will execute it.
+    """
+    site_ranges_in_slot = [(site.offset, site.length) for site in patch_set.sites]
+    problems = []
+    for slot_name in SLOT_NAMES:
+        for call_site, target in iterate_call_sites(slot_bytes(built, slot_name)):
+            overlaps_site = any(call_site < start + length and start < call_site + 4 for start, length in site_ranges_in_slot)
+            if overlaps_site and target not in function_starts and not in_ranges(target, site_ranges_in_slot):
+                problems.append(f"slot {slot_name}: bl at {call_site:#x} overlapping a site targets {target:#x}, not a function start")
+    return problems
+
+
+def branches_leaving_sites(built: OtaFile, patch_set: PatchSet, instruction_starts: set[int]) -> list[str]:
+    """Branches in a site whose target lies outside every site and is not a stock instruction start."""
+    disassembler = capstone.Cs(capstone.CS_ARCH_ARM, capstone.CS_MODE_THUMB | capstone.CS_MODE_MCLASS)
+    site_ranges_in_slot = [(site.offset, site.length) for site in patch_set.sites]
+    slot_a = slot_bytes(built, "A")
+    problems = []
+    for site in patch_set.sites:
+        for decoded in disassembler.disasm(slot_a[site.offset : site.offset + site.length], site.offset):
+            is_branch = decoded.mnemonic.startswith("b") and decoded.mnemonic not in ("bl", "bx", "blx", "bics", "bkpt")
+            match = re.fullmatch(r"#(0x[0-9a-f]+|\d+)", decoded.op_str.split(", ")[-1]) if is_branch else None
+            if match is None:
+                continue
+            target = int(match.group(1), 0)
+            if not in_ranges(target, site_ranges_in_slot) and target not in instruction_starts:
+                problems.append(f"site {site.name}: {decoded.mnemonic} at {decoded.address:#x} leaves to {target:#x}, not a stock instruction start")
+    return problems
+
+
+def site_listing_from_image(built: OtaFile, patch_set: PatchSet, context_bytes: int = 4) -> list[str]:
+    """Disassembly of every site as the built image holds it, with surrounding bytes, in both slots."""
+    disassembler = capstone.Cs(capstone.CS_ARCH_ARM, capstone.CS_MODE_THUMB | capstone.CS_MODE_MCLASS)
+    disassembler.skipdata = True
+    lines = []
+    for site in patch_set.sites:
+        start = max(0, site.offset - context_bytes) & ~1
+        end = site.offset + site.length + context_bytes
+        for slot_name in SLOT_NAMES:
+            slot = SLOTS[slot_name]
+            lines.append(f"--- site {site.name}, slot {slot_name}, image {site.offset:#x}-{site.offset + site.length:#x}, MCU {slot.mcu_address(site.offset):#x}")
+            for decoded in disassembler.disasm(slot_bytes(built, slot_name)[start:end], slot.mcu_address(start)):
+                image_offset = decoded.address - slot.link_base
+                marker = ">" if site.offset <= image_offset < site.offset + site.length else " "
+                lines.append(f" {marker} {decoded.address:#07x}  {decoded.mnemonic} {decoded.op_str}")
+    return lines
 
 
 def site_slot_differences(patch_set: PatchSet) -> list[str]:
