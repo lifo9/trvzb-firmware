@@ -78,10 +78,19 @@ brake/enable lines rather than a stepper.
 ## Knob and buttons
 
 Physical controls: the dial (turn and press) and a configuration key under
-the cover. Button 0 is the dial press, button 1 the configuration key; the
-vendor manual's gestures match the events below (short press switches
-auto/manual, 3 s press toggles the child lock `LC`, 3 s on the configuration
-key flips the screen, dial counter-clockwise past the minimum gives `OF`).
+the cover. Button 0 is the dial press, button 1 the configuration key. The
+vendor manual (User Manual TRVZB EN V1.0) documents these gestures, matching
+the events below:
+
+| Gesture | Effect |
+|---|---|
+| dial press, short | switch auto ↔ manual |
+| dial press, 3 s | child lock on/off (`LC`) |
+| dial press, 3 s while the screen shows `OF` | **pairing mode for 3 minutes** |
+| dial counter-clockwise past the minimum | off mode, `OF` (valve closed, frost protection on) |
+| configuration key, 3 s | rotate the display 180° |
+| dial press held while inserting batteries | factory reset (`FA`) |
+| dial press, short, after installation | motor travel calibration ("debugging") |
 
 Input scanner `0x3e90` reads a bitmask from `0x1688` (bit = channel). Event
 producer `0x3d8c`. The consumer is `0x2e38`–`0x31a6`, the combined

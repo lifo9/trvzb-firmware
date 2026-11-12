@@ -61,6 +61,12 @@ Last writer wins. Nothing locks the value.
   weekly schedule (16–19 °C in the reference setup), so its thermostat closes
   the valve until the pin automation restores heat about 10 s later. The patch
   makes a short press only wake the screen and show the percentage.
+- **A long press in `OF` enters pairing mode.** Stock, holding the dial for
+  3 s while the screen shows `OF` starts pairing for 3 minutes instead of
+  toggling the child lock. If the patch makes `OF` an everyday state, a long
+  press there risks the valve leaving the network. Decide whether to keep the
+  gesture (it is the documented way to re-pair) or require something harder
+  to hit by accident.
 - **Screen rotation needs no patch.** A 3 s press on the configuration key
   under the cover flips the display (event 9, settings `+0xa`).
 - **The first detent only wakes the screen** (stock behaviour, kept). Turns
