@@ -19,7 +19,7 @@ list.
 | dp | Type | Meaning | Handler / field | Confidence |
 |---|---|---|---|---|
 | 1 | bool | on/off: on → mode 0 (heat), off → mode 1 | `0x6b54` (mode setter) | high |
-| 2 | value | occupied heating setpoint, bounded by settings `+0xc`/`+0xd` | `0x6c18` | high |
+| 2 | value | occupied heating setpoint, bounded by settings `+0xd` (minimum) and `+0xc` (maximum) | `0x6c18` | high |
 | 3 | value | local temperature (report) | `0x6324` | high |
 | 4 | enum | system mode / preset | `0x6460`, `0x6cb8` | medium-high |
 | 7 | bool | child lock | settings `+0x1d` | medium-high |
@@ -41,7 +41,7 @@ list.
 | 124 | value | 1..10 | settings `+0xb` | low |
 | 125 | value | heating-on hysteresis threshold, stored as `50 − v`; likely `temperature_accuracy` | settings `+7` | high (role) / medium (attribute) |
 | 126 | value | heating-off hysteresis threshold, stored as `v − 50` | settings `+0x17` | high |
-| 127 | enum | 0 or 2; selects one of two display icon layouts — likely screen direction | settings `+0xa` | low-medium |
+| 127 | enum | screen direction, 0 or 2; the same field the configuration key's 3 s press toggles | settings `+0xa` | high |
 | 128, 130 | raw | schedule / time payloads | `0x6cb8`, `0x6d70` | low-medium |
 | 131 | raw | unresolved: the command jump table sends it to the default branch, yet a second analysis pass linked it to `0x3e64`, possibly through the report path | — | low |
 | 129 | enum | — | `0x646c` | low |

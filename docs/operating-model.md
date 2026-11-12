@@ -56,13 +56,12 @@ Last writer wins. Nothing locks the value.
 
 - **The child lock must be off** for the knob to work. The reference device has
   it on. A long press on button 0 (event 3) toggles it at the valve.
-- **Which press wakes the screen needs verifying.** Stock button 0's short
-  press (event 1) toggles the mode between heat and auto (`0x6b54`). In auto
-  the valve follows its weekly schedule (16–19 °C in the reference setup),
-  so its thermostat closes the valve until the pin automation restores heat
-  about 10 s later. A press meant only to show the percentage must not do
-  that. Before choosing "show on press", confirm
-  whether a press on a sleeping screen only wakes it (as the knob's first detent
-  does) and which physical control is button 0 versus button 1.
+- **The short press must stop switching modes.** Stock, the dial press
+  (button 0, event 1) toggles heat and auto. In auto the valve follows its
+  weekly schedule (16–19 °C in the reference setup), so its thermostat closes
+  the valve until the pin automation restores heat about 10 s later. The patch
+  makes a short press only wake the screen and show the percentage.
+- **Screen rotation needs no patch.** A 3 s press on the configuration key
+  under the cover flips the display (event 9, settings `+0xa`).
 - **The first detent only wakes the screen** (stock behaviour, kept). Turns
   after that change the value.

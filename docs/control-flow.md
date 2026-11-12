@@ -77,6 +77,12 @@ brake/enable lines rather than a stepper.
 
 ## Knob and buttons
 
+Physical controls: the dial (turn and press) and a configuration key under
+the cover. Button 0 is the dial press, button 1 the configuration key; the
+vendor manual's gestures match the events below (short press switches
+auto/manual, 3 s press toggles the child lock `LC`, 3 s on the configuration
+key flips the screen, dial counter-clockwise past the minimum gives `OF`).
+
 Input scanner `0x3e90` reads a bitmask from `0x1688` (bit = channel). Event
 producer `0x3d8c`. The consumer is `0x2e38`–`0x31a6`, the combined
 screen-refresh and key handler, run every tick, dispatching through the jump
@@ -90,7 +96,7 @@ table at `0x3062`:
 | 4 | button 0 | very long press | ignored |
 | **5** | knob channel 2 | **one detent up** | `0x3104` |
 | **6** | knob channel 3 | **one detent down** | `0x3104` |
-| 7–10 | button 1 | short / hold / long / very long | event 9 toggles settings `+0xa` 0 ↔ 2 |
+| 7–10 | button 1 = configuration key, under the cover | short / hold / long / very long | event 9 (3 s press) toggles screen direction, settings `+0xa` 0 ↔ 2 |
 
 Knob channels bypass the button debounce/hold state machine: one detent is
 exactly one event, with no acceleration or repeat.
@@ -107,7 +113,10 @@ Mode numbering: medium-high confidence.
    set the flag and start a 1 s timer (`0x2a14`); the screen stays on 4 s.
 2. Otherwise, at `0x314a`: read the pending value UI `+3` (re-seeded every pass
    from the setpoint getter `0x636c(0)`), increment for event 5 or decrement
-   for event 6, clamp to settings `+0xc`..`+0xd` via `0x7148`, store it back.
+   for event 6, clamp between settings `+0xd` (minimum) and `+0xc` (maximum)
+   via `0x7148`, store it back. In heat mode, turning below the minimum calls
+   `0x6b54(1)`: off mode, shown as `OF`. In off mode, turning up sets the
+   pending value to the minimum and calls `0x6b54(0)`: back to heat.
 3. Commit with `0x6c18(value, 1)`. The second argument marks a local change,
    which only delays the Zigbee report (2 s / 5 s); the setpoint applies at once.
 
@@ -124,5 +133,7 @@ Mode numbering: medium-high confidence.
   blank. Used today for `LC` (child lock), `OP` (open window), `OF` (off).
 - No percent sign is driven anywhere in the firmware. Whether the glass has
   one is unknown; `0xd24`'s all-on test would show it.
-- Two icon-bit layouts, chosen by settings `+0xa` (0 or 2), written by dp 127
-  and toggled by button-1 event 9. This looks like a screen-direction setting.
+- Screen direction: two icon-bit layouts chosen by settings `+0xa` (0 or 2),
+  written by dp 127 and toggled by a 3 s press on the configuration key
+  (event 9). Confirmed by the vendor manual, which documents that press as
+  changing the display direction.
