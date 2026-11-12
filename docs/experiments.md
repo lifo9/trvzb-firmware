@@ -26,4 +26,23 @@ at 12:47 UTC, estimated at 1661 s (6645 chunks).
 **Device before:** installed version 5124, battery 69 %, valve opening and
 closing degree 100, idle steps 297, closing steps 343, setpoint pinned at 35 °C.
 
-**Outcome:** in progress.
+**Outcome: accepted.** Zigbee2MQTT reported the upgrade complete with status
+`ok` at 13:38:50 UTC, about 51 minutes after starting: the transfer took about
+30 minutes, then the Zigbee SoC installed and rejoined the network at 13:34.
+The device now reports file version 5125 (from 5124); `software_build_id`
+stays `1.4.4`, since the SoC image itself is unchanged.
+
+**Device after:** all settings kept (setpoint 35 °C, opening and closing degree
+100, child lock on): data flash was not touched. Battery 69 % → 65 %: one
+flash costs about 4 %.
+
+**Was the MCU part written?** Not directly observable: Zigbee2MQTT exposes no
+application-MCU version. Indirect evidence says yes: the motor calibration
+values changed (idle steps 297 → 314, closing steps 343 → 342), as they would
+if the MCU restarted into new firmware and re-ran its travel calibration. That
+is consistent with the update path committing and restarting, but it is not
+proof. If the MCU did take `1.3.2`, it now refuses stock `1.3.1`.
+
+**Still open:** an observable for the MCU version. Candidate: Zigbee2MQTT's
+generic `read` converter on `genBasic` and the manufacturer cluster `0xfc11`,
+looking for an attribute that carries it.
