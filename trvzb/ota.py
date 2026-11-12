@@ -28,12 +28,15 @@ class OtaFile:
     def __init__(self, path: str = STOCK_OTA_PATH) -> None:
         self.data = bytearray(open(path, "rb").read())
         identifier, _, self.header_length = struct.unpack_from("<IHH", self.data, 0)
-        assert identifier == 0x0BEEF11E, f"not an OTA file: {identifier:#x}"
+        if identifier != 0x0BEEF11E:
+            raise ValueError(f"not an OTA file: {identifier:#x}")
         total_image_size, = struct.unpack_from("<I", self.data, TOTAL_IMAGE_SIZE_OFFSET)
-        assert total_image_size == len(self.data), "total image size disagrees with the file length"
+        if total_image_size != len(self.data):
+            raise ValueError("total image size disagrees with the file length")
         self.mcu_payload_start, self.mcu_payload_length = self._locate_mcu_subelement()
         self.slot_length = (self.mcu_payload_length - MCU_PART_TABLE_LENGTH) // 2
-        assert MCU_PART_TABLE_LENGTH + 2 * self.slot_length == self.mcu_payload_length, "MCU payload is not two equal slots"
+        if MCU_PART_TABLE_LENGTH + 2 * self.slot_length != self.mcu_payload_length:
+            raise ValueError("MCU payload is not two equal slots")
 
     def _locate_mcu_subelement(self) -> tuple[int, int]:
         offset = self.header_length
@@ -42,7 +45,7 @@ class OtaFile:
             if tag == MCU_SUBELEMENT_TAG:
                 return offset + 6, length
             offset += 6 + length
-        raise AssertionError("no MCU subelement found")
+        raise ValueError("no MCU subelement found")
 
     def slot_offset(self, slot_name: str) -> int:
         """File offset of a slot's first byte."""
@@ -51,11 +54,15 @@ class OtaFile:
 
     def patch_both_slots(self, slot_relative_offset: int, old_bytes: bytes, new_bytes: bytes) -> None:
         """Apply one same-length patch at the same offset inside both slots."""
-        assert len(old_bytes) == len(new_bytes), "patches must not change the image length"
+        if len(old_bytes) != len(new_bytes):
+            raise ValueError("patches must not change the image length")
+        if not 0 <= slot_relative_offset <= self.slot_length - len(old_bytes):
+            raise ValueError(f"patch at {slot_relative_offset:#x} of {len(old_bytes)} bytes runs outside the {self.slot_length:#x}-byte slot")
         for slot_name in ("A", "B"):
             start = self.slot_offset(slot_name) + slot_relative_offset
             found = bytes(self.data[start : start + len(old_bytes)])
-            assert found == old_bytes, f"slot {slot_name} at {slot_relative_offset:#x} holds {found!r}, expected {old_bytes!r}"
+            if found != old_bytes:
+                raise ValueError(f"slot {slot_name} at {slot_relative_offset:#x} holds {found!r}, expected {old_bytes!r}")
             self.data[start : start + len(new_bytes)] = new_bytes
 
     def find_in_slot_a(self, pattern: bytes) -> list[int]:
@@ -71,16 +78,19 @@ class OtaFile:
         """Rewrite the `vers:AAAAAAAA,BBBBBBBB` header string, keeping its length."""
         header_string = bytes(self.data[HEADER_STRING_OFFSET : HEADER_STRING_OFFSET + HEADER_STRING_LENGTH])
         match = re.match(rb"vers:(\d{8}),(\d{8})\n", header_string)
-        assert match is not None, f"unexpected header string {header_string!r}"
+        if match is None:
+            raise ValueError(f"unexpected header string {header_string!r}")
         replacement = f"vers:{zigbee_version},{mcu_version}\n".encode()
-        assert len(replacement) == match.end(), "replacement header string changes length"
+        if len(replacement) != match.end():
+            raise ValueError("replacement header string changes length")
         self.data[HEADER_STRING_OFFSET : HEADER_STRING_OFFSET + len(replacement)] = replacement
 
     def header_versions(self) -> tuple[str, str]:
         """The Zigbee and MCU version fields of the header string, e.g. ('00001404', '00001301')."""
         header_string = bytes(self.data[HEADER_STRING_OFFSET : HEADER_STRING_OFFSET + HEADER_STRING_LENGTH])
         match = re.match(rb"vers:(\d{8}),(\d{8})\n", header_string)
-        assert match is not None, f"unexpected header string {header_string!r}"
+        if match is None:
+            raise ValueError(f"unexpected header string {header_string!r}")
         return match.group(1).decode(), match.group(2).decode()
 
     def mcu_header_string(self) -> bytes:
@@ -88,7 +98,8 @@ class OtaFile:
 
     def write(self, path: str) -> dict:
         total_image_size, = struct.unpack_from("<I", self.data, TOTAL_IMAGE_SIZE_OFFSET)
-        assert total_image_size == len(self.data), "length changed; total image size would need updating"
+        if total_image_size != len(self.data):
+            raise RuntimeError("length changed; total image size would need updating")
         open(path, "wb").write(self.data)
         file_version, = struct.unpack_from("<I", self.data, FILE_VERSION_OFFSET)
         return {

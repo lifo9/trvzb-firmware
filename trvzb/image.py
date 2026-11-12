@@ -24,7 +24,8 @@ class Slot:
 
     def image_offset(self, mcu_address: int) -> int:
         image_offset = mcu_address - self.link_base
-        assert image_offset >= 0, f"{mcu_address:#x} lies below slot {self.name}'s base {self.link_base:#x}"
+        if image_offset < 0:
+            raise ValueError(f"{mcu_address:#x} lies below slot {self.name}'s base {self.link_base:#x}")
         return image_offset
 
 

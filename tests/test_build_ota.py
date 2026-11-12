@@ -30,7 +30,7 @@ def test_ota_file__raises_on_wrong_magic(tmp_path: Path) -> None:
     corrupted[0] ^= 0xFF
     path = tmp_path / "corrupted.ota"
     path.write_bytes(corrupted)
-    with pytest.raises(AssertionError, match="not an OTA file"):
+    with pytest.raises(ValueError, match="not an OTA file"):
         OtaFile(str(path))
 
 
@@ -38,7 +38,7 @@ def test_ota_file__raises_when_total_size_disagrees_with_file(tmp_path: Path) ->
     data, _ = build_synthetic_ota_bytes()
     path = tmp_path / "truncated.ota"
     path.write_bytes(data[:-1])
-    with pytest.raises(AssertionError, match="total image size"):
+    with pytest.raises(ValueError, match="total image size"):
         OtaFile(str(path))
 
 
@@ -65,13 +65,13 @@ def test_patch_both_slots__writes_same_bytes_at_same_offset_in_both_slots(synthe
 
 def test_patch_both_slots__raises_when_old_bytes_do_not_match(synthetic_ota: SyntheticOta) -> None:
     ota = OtaFile(str(synthetic_ota.path))
-    with pytest.raises(AssertionError, match="slot A"):
+    with pytest.raises(ValueError, match="slot A"):
         ota.patch_both_slots(0x41, b"1.3.1", b"1.3.2")
 
 
 def test_patch_both_slots__raises_when_length_changes(synthetic_ota: SyntheticOta) -> None:
     ota = OtaFile(str(synthetic_ota.path))
-    with pytest.raises(AssertionError, match="length"):
+    with pytest.raises(ValueError, match="length"):
         ota.patch_both_slots(0x40, b"1.3.1", b"1.3.10")
 
 
@@ -91,7 +91,7 @@ def test_set_header_versions__rewrites_both_versions_keeping_length(synthetic_ot
 
 def test_set_header_versions__raises_on_wrong_length(synthetic_ota: SyntheticOta) -> None:
     ota = OtaFile(str(synthetic_ota.path))
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         ota.set_header_versions("1405", "00001302")
 
 
@@ -162,3 +162,9 @@ def test_main__derives_header_versions_from_arguments(synthetic_ota: SyntheticOt
     output_path = tmp_path / "out.ota"
     run_build_ota(synthetic_ota.path, output_path, mcu_version="2.0.0", file_version="0x1406")
     assert OtaFile(str(output_path)).header_versions() == ("00001406", "00002000")
+
+
+def test_patch_both_slots__raises_when_patch_runs_past_slot_end(synthetic_ota: SyntheticOta) -> None:
+    ota = OtaFile(str(synthetic_ota.path))
+    with pytest.raises(ValueError, match="outside"):
+        ota.patch_both_slots(synthetic_ota.slot_length - 2, b"abcd", b"wxyz")

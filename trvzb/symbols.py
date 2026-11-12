@@ -66,7 +66,8 @@ def load_symbols(path: Path = SYMBOLS_PATH) -> Symbols:
     function_offsets = {entry["name"]: entry["offset"] for entry in document.get("function", [])}
     label_offsets = {entry["name"]: entry["offset"] for entry in document.get("label", [])}
     duplicates = set(function_offsets) & set(label_offsets)
-    assert not duplicates, f"names used for both a function and a label: {sorted(duplicates)}"
+    if duplicates:
+        raise ValueError(f"names used for both a function and a label: {sorted(duplicates)}")
     return Symbols(
         function_offsets=function_offsets,
         label_offsets=label_offsets,
