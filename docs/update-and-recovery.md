@@ -100,7 +100,8 @@ leaves the settings layout alone.
   scatter loader copies it to RAM `0x20000000`, and the vector-table copy at
   `0x1cb4` overwrites exactly those 192 bytes before VTOR points there, so code
   placed in it runs from flash and is never read as data. Nothing else
-  references it (fact-tested).
+  references it. Both facts are tested by emulating the boot in each slot
+  with the cave filled with a marker.
 - Patch both slots at the same slot-relative offset. Absolute flash addresses
   differ by `0x7c00` between slots, and so does one instruction immediate
   (`0x1cc0`: `lsls r2, r2, #10` in slot A, `#15` in slot B); a patch must be

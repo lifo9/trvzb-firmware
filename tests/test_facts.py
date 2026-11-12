@@ -10,9 +10,14 @@ from pathlib import Path
 
 import pytest
 from firmware_map import FirmwareMap
-from trvzb.image import iterate_call_sites
+from trvzb.emulator import FirmwareEmulator
+from trvzb.image import SLOT_A, SLOT_B, iterate_call_sites
 from trvzb.symbols import Symbols, load_symbols
 from trvzb.version import McuVersion
+
+
+RAM_VECTOR_TABLE = 0x20000000
+VTOR_ADDRESS = 0xE000ED08
 
 
 @pytest.fixture(scope="module")
@@ -152,11 +157,22 @@ def test_code_cave__is_zero_and_referenced_only_by_the_scatter_loader(image: byt
     assert word_offsets_pointing_into_cave == [scatter_loader_end_bound, data_init_entry_source]
 
 
-def test_code_cave__is_overwritten_by_the_vector_copy(image: bytes, symbols: Symbols) -> None:
+@pytest.mark.parametrize("slot_name", ["A", "B"])
+def test_code_cave__boot_copies_it_to_ram_and_the_vector_table_replaces_it(
+    stock_slot_a_path: Path, stock_slot_b_path: Path, symbols: Symbols, slot_name: str
+) -> None:
+    slot, slot_image = (SLOT_A, stock_slot_a_path.read_bytes()) if slot_name == "A" else (SLOT_B, stock_slot_b_path.read_bytes())
     cave = symbols.regions["code_cave"]
-    source, destination, length, _ = (int.from_bytes(image[0x7908 + 4 * index : 0x790C + 4 * index], "little") for index in range(4))
-    vector_copy_word_count = 0x30
-    assert (source - 0x400, destination, length) == (cave.start, 0x20000000, vector_copy_word_count * 4)
+    marker = bytes((0xA5 + index) & 0xFF for index in range(cave.end - cave.start))
+    emulator = FirmwareEmulator(slot=slot, slot_image=slot_image, function_starts=set())
+    emulator.write_code(cave.start, marker)
+    scatter_loader, scatter_loader_jump_to_main = 0x2CC, 0x2E4
+    emulator.run_until(scatter_loader, scatter_loader_jump_to_main)
+    assert emulator.read_bytes(RAM_VECTOR_TABLE, len(marker)) == marker
+    vector_copy, after_vtor_store = symbols.offset("vector_copy_start"), 0x1CDA
+    emulator.run_until(vector_copy, after_vtor_store)
+    assert emulator.read_bytes(RAM_VECTOR_TABLE, len(marker)) == slot_image[: len(marker)]
+    assert int.from_bytes(emulator.read_bytes(VTOR_ADDRESS, 4), "little") == RAM_VECTOR_TABLE
 
 
 @pytest.mark.parametrize("protected_name", ["scatter_loader", "vector_copy_and_vtor", "system_reset", "uart_frame_parser", "ota_block_request", "uart_frame_send"])

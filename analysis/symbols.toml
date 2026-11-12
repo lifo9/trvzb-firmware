@@ -44,6 +44,12 @@ confidence = "medium"
 summary = "Display-awake getter; the event producer drops inputs while asleep"
 
 [[function]]
+name = "vector_copy_start"
+offset = 0x1cb4
+confidence = "high"
+summary = "Copies the slot's 48-entry vector table to RAM 0x20000000 and points VTOR at it"
+
+[[function]]
 name = "motor_tick"
 offset = 0x1aa4
 confidence = "high"

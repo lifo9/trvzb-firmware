@@ -144,6 +144,13 @@ class FirmwareEmulator:
             raise RuntimeError(f"function did not return to the trap; stopped at {self.engine.reg_read(UC_ARM_REG_PC):#x}")
         return self.engine.reg_read(UC_ARM_REG_R0)
 
+    def run_until(self, start_offset: int, stop_offset: int) -> None:
+        """Run from `start_offset` with a fresh stack until execution reaches `stop_offset`."""
+        self.engine.reg_write(UC_ARM_REG_SP, STACK_TOP)
+        self.engine.emu_start(self.slot.mcu_address(start_offset) | 1, self.slot.mcu_address(stop_offset), count=INSTRUCTION_LIMIT)
+        if self.engine.reg_read(UC_ARM_REG_PC) != self.slot.mcu_address(stop_offset):
+            raise RuntimeError(f"did not reach {stop_offset:#x}; stopped at {self.engine.reg_read(UC_ARM_REG_PC):#x}")
+
     def read_bytes(self, address: int, length: int) -> bytes:
         return bytes(self.engine.mem_read(address, length))
 
