@@ -113,7 +113,9 @@ leaves the settings layout alone.
   numbers up: the string is packed into 2 bits major, 2 bits minor and 4 bits
   patch, so `1.3.15` is the highest `1.3.x` and `1.4.0` packs *below* `1.3.1`.
   The string must also keep its length (`1.3.10` does not fit), which leaves
-  `1.3.2`–`1.3.9`, then `2.x.y` and `3.x.y` with single-digit parts.
+  `1.3.2`–`1.3.9`, then `2.x.y` and `3.x.y` with single-digit parts. How the
+  Zigbee SoC turns a `2.x.y` header field into the notified version byte is
+  untested, so use `1.3.3`–`1.3.9` first.
   `tools/build_ota.py` enforces all of this and derives both header version
   fields from its arguments.
 - Test acceptance with a version-string-only image before any logic change.

@@ -12,6 +12,11 @@ table, every `bl` target, every pointer word that lands on a `push {..., lr}`
 prologue, and the case targets of the compiler's byte switch helper. Code
 reached only some other way may still be missing; `raw` disassembles any range
 regardless.
+
+Known limitations: a constant that happens to lie in the flash address range is
+annotated as a pointer (and `uses` lists its loaders); `main` at 0x4330 is not
+discovered; and field_accesses misses register-indexed accesses such as
+`ldrb r0, [r1, r2]`.
 """
 
 from __future__ import annotations
