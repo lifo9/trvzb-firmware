@@ -36,8 +36,10 @@ closing degree 100, idle steps 297, closing steps 343, setpoint pinned at 35 °C
 **Outcome: accepted.** Zigbee2MQTT reported the upgrade complete with status
 `ok` at 13:38:50 UTC, about 51 minutes after starting: the transfer took about
 30 minutes, then the Zigbee SoC installed and rejoined the network at 13:34.
-The device now reports file version 5125 (from 5124); `software_build_id`
-stays `1.4.4`, since the SoC image itself is unchanged.
+Zigbee2MQTT now shows installed version 5125, but that is the header of the
+image it served, not a value read from the device. The SoC's own OTA client
+attribute `currentFileVersion` still reads 5124, and `software_build_id`
+stays `1.4.4`: the SoC application is stock and carries its version built in.
 
 **Device after:** all settings kept (setpoint 35 °C, opening and closing degree
 100, child lock on): data flash was not touched. Battery 69 % → 65 %: one
@@ -73,12 +75,45 @@ in. Pulling the batteries did not stop it, so the state is in flash.
 A temporary Zigbee2MQTT extension then answered three requests with exactly
 the `upgradeEndResponse` zigbee-herdsman sends (`currentTime` 0,
 `upgradeTime` 1, the request's transaction number). The valve rebooted ~13 s
-after each answer and asked again, as before. So the loop is not a missing
-answer: the Zigbee SoC keeps re-running the install, and the application-MCU
-half keeps failing. With the version gate passing (1.3.2 packs above 1.3.1),
-the likeliest failure is the transfer checksum: **the SoC appears to carry a
-precomputed sum, so a modified MCU payload never passes.** Not yet proven.
+after each answer and asked again, as before.
 
-While looping the valve ignores Zigbee2MQTT's update offers ("device didn't
-respond"). Recovery attempt: release `1.4.6-recovery` (stock content, file
-version 5126) is scheduled to start on the valve's own next image query.
+While looping the valve ignored every update offer ("device didn't respond"),
+never sent an image query of its own, and a factory reset (knob held while
+inserting the batteries, `FA`) cleared the application MCU's settings but left
+the Zigbee SoC's network and the loop untouched.
+
+**Cause: the image header's version differs from the SoC's built-in one.**
+The SoC runs Silicon Labs' standard OTA client (gecko_sdk
+`plugin/ota-client/ota-client.c`). Every time the network comes up,
+`determineDownloadFileStatus()` inspects the stored image: a fully downloaded
+image whose header version **differs** from the running version (a constant
+built into the SoC application, 5124 here) is verified and installed again
+via `UpgradeEndRequest`. The image's header says 5125 while its SoC
+application is stock 1.4.4, so every install boots into the same mismatch.
+This explains every symptom: the fixed 5125 in each request, a full reboot per
+cycle, offers ignored (Image Notify is dropped in that state, and the client
+never reaches the query state), and no effect from answering or resetting.
+The same loop is reported on a SONOFF ZBMINIR2 (no application MCU) after a
+header-only version bump, so it says nothing about the application-MCU
+transfer: **whether the MCU accepted 1.3.2 is still unknown.**
+
+**Fix: a ZCL Default Response with status ABORT (`0x95`) to the
+`UpgradeEndRequest`.** In the client, a non-success default response in
+`WAITING_FOR_UPGRADE_MESSAGE` reaches `upgradeEndResponseParse()` →
+`downloadAndVerifyFinish(SERVER_ABORTED)` and returns to querying instead of
+installing. zigbee-herdsman sends nothing outside an update session (the
+command declares a response, so no automatic default response either). A
+temporary Zigbee2MQTT external extension sent the ABORT at 18:18:13 local
+time; the reboots stopped (the last was 18:13:56), and the OTA client then read
+`imageUpgradeStatus` 0 (normal) and `currentFileVersion` 5124. The ZBMINIR2
+report says the device then discards the image and the fix survives power
+cuts; on the TRVZB that is not yet confirmed.
+
+The planned recovery, `1.4.6-recovery` (stock content, header 5126), would
+have restarted the loop at 5126 and was cancelled. Re-sending stock 1.4.4
+cannot clean the storage either: the client skips an offer whose version
+equals its running one.
+
+Settings lost to the factory reset were written back from the snapshot taken
+before it; the motor calibration values (idle and closing steps, limit
+voltages) were re-measured by the device itself.

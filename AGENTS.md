@@ -8,6 +8,11 @@ Guidelines for agents working in this repository.
   a live Zigbee2MQTT — without explicit approval for that specific image. A
   non-booting application image may be unrecoverable over the air; see
   [docs/update-and-recovery.md](docs/update-and-recovery.md).
+- Never flash an image whose OTA header version differs from the version built
+  into its Zigbee SoC application (5124 for stock 1.4.4): the SoC re-installs
+  it on every boot, forever. This rules out every release built on the stock
+  SoC image today, including `1.4.6-recovery` and `1.4.6-knob`; see
+  [docs/update-and-recovery.md](docs/update-and-recovery.md).
 - Test acceptance with a version-string-only image before any logic change.
 - Record every flash in [docs/experiments.md](docs/experiments.md): image,
   diff from stock, SHA-512, device state before and after, outcome.

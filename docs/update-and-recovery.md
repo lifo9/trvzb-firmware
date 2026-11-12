@@ -32,6 +32,34 @@ A minimal index entry:
 The file version must exceed the installed one for an update to be offered.
 For Sonoff image type 8199, Zigbee2MQTT allows up to an hour per update.
 
+## The header version must equal the SoC's built-in version — inferred, confirmed on a device
+
+The Zigbee SoC firmware is encrypted, so this rests on Silicon Labs' standard
+OTA client source plus valve-1's behaviour, which matched it step for step,
+including the ABORT fix. The SoC runs that standard OTA client. After every network-up
+it compares the stored image's header version with the version built into the
+running SoC application (`currentFileVersion`, 5124 for stock 1.4.4). If they
+differ, it installs the stored image again, reboots, and repeats forever (see
+the aftermath of experiment 1 in `experiments.md`). Zigbee2MQTT's
+`installed_version` echoes the header it served, so read `genOta`
+`currentFileVersion` (client direction) for the real value.
+
+Consequences:
+
+- An image whose SoC part is stock 1.4.4 must carry header version 5124.
+  Zigbee2MQTT only offers it with `force` in the index entry, and the client
+  then skips it as the version it already runs (client source; not tried on
+  a device). **A modified application-MCU
+  payload cannot be delivered on the stock 1.4.4 SoC image by OTA.**
+- The way forward is a genuine Sonoff release newer than the installed one,
+  keeping its header version unchanged and modifying only the MCU subelement.
+  None exists as of 2026-11-12: 1.4.4 is the newest in the Zigbee2MQTT index,
+  on Sonoff's own OTA server and in the official changelog.
+- A device caught in the loop is released by answering its `UpgradeEndRequest`
+  with a ZCL Default Response, status ABORT (`0x95`), command `0x06`, cluster
+  `genOta`, the request's transaction number; a Zigbee2MQTT external extension
+  can send it with `endpoint.defaultResponse(0x06, 0x95, 0x0019, tsn)`.
+
 ## The application updates itself — proven
 
 The application MCU receives its own firmware from the Zigbee SoC over the
