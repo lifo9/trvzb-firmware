@@ -23,6 +23,7 @@
             (pkgs.python3.withPackages (pythonPackages: [
               pythonPackages.capstone
               pythonPackages.pytest
+              pythonPackages.unicorn
             ]))
             pkgs.curl
             pkgs.pkgsCross.arm-embedded.buildPackages.binutils
