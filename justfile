@@ -6,11 +6,23 @@ stock_ota_sha512 := "c7640e2a238ab9807b77d36abc4b9e58d64c99a8fe8ac8d6246f48760bc
 default:
     @just --list
 
-# Download the stock 1.4.4 OTA into work/ and verify its checksum
+# Download the stock 1.4.4 OTA into work/ unless a verified copy is already there
 fetch:
+    #!/usr/bin/env bash
+    set -euo pipefail
     mkdir -p work
-    curl -sSfL -o work/trvzb_v1.4.4.ota "{{stock_ota_url}}"
-    echo "{{stock_ota_sha512}}  work/trvzb_v1.4.4.ota" | shasum -a 512 -c -
+    verify() { python3 -I -c 'import hashlib, sys; sys.exit(hashlib.sha512(open(sys.argv[1], "rb").read()).hexdigest() != sys.argv[2])' "$1" "{{stock_ota_sha512}}"; }
+    if [ -f work/trvzb_v1.4.4.ota ] && verify work/trvzb_v1.4.4.ota; then
+        echo "work/trvzb_v1.4.4.ota: present, SHA-512 verified"
+        exit 0
+    fi
+    curl -sSfL -o work/trvzb_v1.4.4.ota.partial "{{stock_ota_url}}"
+    if ! verify work/trvzb_v1.4.4.ota.partial; then
+        echo "downloaded file does not match the pinned SHA-512; keeping it at work/trvzb_v1.4.4.ota.partial for inspection" >&2
+        exit 1
+    fi
+    mv work/trvzb_v1.4.4.ota.partial work/trvzb_v1.4.4.ota
+    echo "work/trvzb_v1.4.4.ota: downloaded, SHA-512 verified"
 
 # Split the application-MCU slots out of the stock OTA
 extract: fetch

@@ -24,6 +24,7 @@
               pythonPackages.capstone
               pythonPackages.pytest
             ]))
+            pkgs.curl
             pkgs.just
             pkgs.kubectl
           ];
