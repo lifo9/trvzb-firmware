@@ -27,3 +27,7 @@ dis address:
 # Call sites of one or more image offsets, e.g. `just calls 0x6c18`
 calls +addresses:
     python3 -I tools/calls.py {{addresses}}
+
+# Run the test suite (the golden-hash test needs `just fetch` first)
+test:
+    python3 -I -m pytest -q -p no:cacheprovider tests
