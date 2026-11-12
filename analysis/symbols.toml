@@ -236,6 +236,12 @@ confidence = "medium"
 summary = "(which): the current setpoint; reseeds the knob's pending value"
 
 [[function]]
+name = "clock_read"
+offset = 0x1dc4
+confidence = "medium"
+summary = "(buffer): fills the current date and time; byte 3 is the weekday mode_set checks"
+
+[[function]]
 name = "time_synced_set"
 offset = 0x6ae0
 confidence = "high"

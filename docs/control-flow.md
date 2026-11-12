@@ -112,6 +112,15 @@ through a pointer table and dispatching through the switch at `0x3064`:
 | **6** | knob channel 3 | **one detent down** | `0x3104` |
 | 7–10 | button 1 = configuration key, under the cover | short / hold / long / very long | event 9 (3 s press) toggles screen direction, settings `+0xa` 0 ↔ 2 |
 
+`0x6b54` refuses some changes and returns without effect (verified under
+emulation, `tests/test_emulator_stock_mode.py`):
+
+- auto (2) while runtime `+0x12` (`time_synced`) is 0. Only `0x6ae0` sets it,
+  from the time-sync handler, so auto is unavailable until the valve has
+  received the time over Zigbee — for example right after a battery change;
+- any change while today's byte in the per-weekday table at settings `+0x9d`
+  is 0 (the weekday comes from the clock reader `0x1dc4`).
+
 Knob channels bypass the button debounce/hold state machine: one detent is
 exactly one event, with no acceleration or repeat.
 

@@ -125,5 +125,21 @@ class FirmwareEmulator:
         if self.engine.reg_read(UC_ARM_REG_PC) != RETURN_TRAP:
             raise RuntimeError(f"fragment did not return to the trap; stopped at {self.engine.reg_read(UC_ARM_REG_PC):#x}")
 
+    def call_function(self, function_offset: int, arguments: tuple[int, ...] = ()) -> int:
+        """Run a whole function with up to four arguments; return r0."""
+        if len(arguments) > len(ARGUMENT_REGISTERS):
+            raise ValueError("at most four register arguments")
+        for register, value in zip(ARGUMENT_REGISTERS, arguments):
+            self.engine.reg_write(register, value & 0xFFFFFFFF)
+        self.engine.reg_write(UC_ARM_REG_SP, STACK_TOP)
+        self.engine.reg_write(UC_ARM_REG_LR, RETURN_TRAP | 1)
+        self.engine.emu_start(self.slot.mcu_address(function_offset) | 1, RETURN_TRAP, count=INSTRUCTION_LIMIT)
+        if self.engine.reg_read(UC_ARM_REG_PC) != RETURN_TRAP:
+            raise RuntimeError(f"function did not return to the trap; stopped at {self.engine.reg_read(UC_ARM_REG_PC):#x}")
+        return self.engine.reg_read(UC_ARM_REG_R0)
+
+    def read_bytes(self, address: int, length: int) -> bytes:
+        return bytes(self.engine.mem_read(address, length))
+
     def calls_to(self, function_offset: int) -> list[tuple[int, int, int, int]]:
         return [call.arguments for call in self.calls if call.function_offset == function_offset]

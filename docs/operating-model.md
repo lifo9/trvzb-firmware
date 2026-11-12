@@ -91,7 +91,10 @@ What the firmware must do differently from stock:
    includes auto mode, where the stock knob path returns at once, so auto
    needs a new path rather than a changed one.
 2. Below `0`, switch to off (stock already turns below the minimum into off).
-3. Up from off, switch to auto (stock switches to heat).
+3. Up from off, switch to auto (stock switches to heat). The mode setter
+   refuses auto until the clock has been synced over Zigbee, so if the valve
+   is still off afterwards, fall back to heat (manual): turning up must always
+   bring heating on, even after a battery change with no network.
 4. A short press on an awake screen switches manual → auto, and does nothing in
    auto (stock toggles both ways).
 5. A first detent or press on a sleeping screen only wakes it — already true in
@@ -104,5 +107,7 @@ Unchanged: the child lock gesture, the pairing gesture in `OF`, screen rotation.
 
 - **Child lock off.** The reference device has it on; a 3 s knob press toggles it.
 - **Weekly schedule at 35 °C in every slot**, so auto mode stays pinned open.
+- **Every weekday enabled in the per-day table** (settings `+0x9d`, probably
+  datapoint 118): the mode setter refuses any change on a disabled day.
 - Home Assistant automations as described above, replacing the current pin
   (which forces heat mode) and mirror (which writes regardless of mode).
