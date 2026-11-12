@@ -1,0 +1,27 @@
+name = "knob-valve-percent"
+regions = ["ui_main_screen", "code_cave"]
+
+[[site]]
+name = "knob_step"
+offset = 0x314a
+max_length = 0x5e
+
+[[site]]
+name = "short_press_in_auto"
+offset = 0x30f4
+max_length = 4
+
+[[site]]
+name = "display_value_call"
+offset = 0x2fde
+max_length = 4
+
+[[site]]
+name = "cave_set_valve_opening"
+offset = 0x7948
+max_length = 0x40
+
+[[site]]
+name = "cave_draw_valve_opening"
+offset = 0x7988
+max_length = 0x80

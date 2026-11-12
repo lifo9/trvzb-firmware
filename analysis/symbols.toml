@@ -279,6 +279,16 @@ offset = 0x30dc
 summary = "Event 1: stock toggles heat and auto"
 
 [[label]]
+name = "ui_main_screen.short_press_auto_to_heat"
+offset = 0x30f4
+summary = "movs r1, #1; movs r0, #0 before bl mode_set: the stock short press in auto switches to heat"
+
+[[label]]
+name = "ui_main_screen.short_press_return"
+offset = 0x30fc
+summary = "pop {r3-r7, pc} ending the short-press path"
+
+[[label]]
 name = "ui_main_screen.knob_branch"
 offset = 0x3104
 summary = "Events 5 and 6 enter here"
