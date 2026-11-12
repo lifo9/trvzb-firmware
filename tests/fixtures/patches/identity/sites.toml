@@ -1,0 +1,11 @@
+name = "identity"
+
+[[site]]
+name = "knob_commit"
+offset = 0x31a0
+max_length = 6
+
+[[site]]
+name = "digit_font_pointer"
+offset = 0x3350
+max_length = 4
