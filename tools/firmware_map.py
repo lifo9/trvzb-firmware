@@ -215,36 +215,25 @@ class FirmwareMap:
             lines.append(f"{address:#07x}  {instruction.text}{annotation}")
         return "\n".join(lines)
 
+    def string_references(self, minimum_length: int = 5) -> list[tuple[int, str, set[int]]]:
+        """Every printable string with the functions that reference it.
 
-if __name__ == "__main__":
-    firmware = FirmwareMap()
-    command = sys.argv[1] if len(sys.argv) > 1 else "summary"
-    if command == "summary":
-        print("functions", len(firmware.functions))
-        print("vector handlers", [hex(a) for a in firmware.vector_table()])
-        print("\nperipherals:")
-        for address, readers in sorted(firmware.peripheral_addresses().items()):
-            print(f"  {address:#010x}  read by {len(readers)} fn: {[hex(r) for r in sorted(readers)][:6]}")
-    elif command == "strings":
-        for address, text in sorted(firmware.strings(5).items()):
-            if re.search(r"[a-zA-Z]{4}", text):
-                readers: set[int] = set()
-                for candidate in range(address - 3, address + 1):
-                    readers |= firmware.literal_readers.get(candidate, set())
-                print(f"{address:#07x} {text!r} refs={[hex(r) for r in sorted(readers)]}")
-    elif command == "dis":
-        print(firmware.disassemble(int(sys.argv[2], 0)))
-    elif command == "callers":
-        target = int(sys.argv[2], 0)
-        print([hex(a) for a in sorted(firmware.callers_of.get(target, set()))])
-    elif command == "ram":
-        for address, readers in sorted(firmware.ram_addresses().items()):
-            print(f"{address:#010x} refs={len(readers)} {[hex(r) for r in sorted(readers)][:8]}")
-    elif command == "fields":
-        struct_address = int(sys.argv[2], 0)
+        A reference may point up to three bytes before the string, since `adr`
+        targets are word-aligned.
+        """
+        references = []
+        for address, text in sorted(self.strings(minimum_length).items()):
+            readers: set[int] = set()
+            for candidate in range(address - 3, address + 1):
+                readers |= self.literal_readers.get(candidate, set())
+            references.append((address, text, readers))
+        return references
+
+    def field_accesses(self, struct_address: int) -> tuple[dict[int, set[int]], dict[int, set[int]]]:
+        """Functions reading and writing each field of the struct at `struct_address`."""
         readers: dict[int, set[int]] = defaultdict(set)
         writers: dict[int, set[int]] = defaultdict(set)
-        for entry, function in sorted(firmware.functions.items()):
+        for entry, function in sorted(self.functions.items()):
             holding_registers: set[str] = set()
             for address in sorted(function.instructions):
                 instruction = function.instructions[address]
@@ -262,21 +251,18 @@ if __name__ == "__main__":
                     continue
                 if instruction.mnemonic in ("movs", "mov", "ldr", "ldrb", "adds", "subs") and destination in holding_registers:
                     holding_registers.discard(destination)
-        for offset in sorted(set(readers) | set(writers)):
-            print(
-                f"+{offset:#04x} read={[hex(a) for a in sorted(readers[offset])]} "
-                f"written={[hex(a) for a in sorted(writers[offset])]}"
-            )
-    elif command == "raw":
-        start = int(sys.argv[2], 0)
-        length = int(sys.argv[3], 0) if len(sys.argv) > 3 else 0x80
-        texts = firmware.strings()
-        for decoded in firmware.disassembler.disasm(firmware.image[start : start + length], start):
+        return readers, writers
+
+    def raw_listing(self, start: int, length: int) -> list[str]:
+        """Linear disassembly of a byte range, independent of function discovery."""
+        texts = self.strings()
+        lines = []
+        for decoded in self.disassembler.disasm(self.image[start : start + length], start):
             annotation = ""
             if decoded.mnemonic.startswith("ldr") and "[pc," in decoded.op_str:
-                literal_address = FirmwareMap._literal_address(decoded)
-                if literal_address is not None and literal_address + 4 <= len(firmware.image):
-                    annotation = f"  ; ={firmware.read_word(literal_address):#x}"
+                literal_address = self._literal_address(decoded)
+                if literal_address is not None and literal_address + 4 <= len(self.image):
+                    annotation = f"  ; ={self.read_word(literal_address):#x}"
             if decoded.mnemonic in ("adr",) or (decoded.mnemonic == "add" and "pc" in decoded.op_str):
                 match = re.search(r"#(-?(?:0x[0-9a-f]+|\d+))", decoded.op_str)
                 if match:
@@ -285,22 +271,69 @@ if __name__ == "__main__":
                     nearby = [t for t in texts.items() if target <= t[0] <= target + 3]
                     if nearby:
                         annotation += f' "{nearby[0][1]}"'
-            print(f"{decoded.address:#07x}  {decoded.mnemonic} {decoded.op_str}{annotation}")
-    elif command == "find":
-        pattern = re.compile(sys.argv[2])
-        for entry in sorted(firmware.functions):
-            listing = firmware.disassemble(entry)
-            for line in listing.splitlines():
+            lines.append(f"{decoded.address:#07x}  {decoded.mnemonic} {decoded.op_str}{annotation}")
+        return lines
+
+    def matching_lines(self, pattern: re.Pattern[str]) -> list[str]:
+        """Disassembly lines of every function that match `pattern`."""
+        matches = []
+        for entry in sorted(self.functions):
+            for line in self.disassemble(entry).splitlines():
                 if pattern.search(line):
-                    print(f"fn {entry:#07x} | {line}")
-    elif command == "uses":
-        target = int(sys.argv[2], 0)
+                    matches.append(f"fn {entry:#07x} | {line}")
+        return matches
+
+    def users_of(self, target: int) -> set[int]:
+        """Functions that load `target` from a literal pool or point `adr` at it."""
         users = set()
-        for entry, function in firmware.functions.items():
+        for entry, function in self.functions.items():
             if target in function.literal_values.values() or target in function.data_references.values():
                 users.add(entry)
-        print([hex(a) for a in sorted(users)])
+        return users
+
+
+def main() -> None:
+    firmware = FirmwareMap()
+    command = sys.argv[1] if len(sys.argv) > 1 else "summary"
+    if command == "summary":
+        print("functions", len(firmware.functions))
+        print("vector handlers", [hex(a) for a in firmware.vector_table()])
+        print("\nperipherals:")
+        for address, readers in sorted(firmware.peripheral_addresses().items()):
+            print(f"  {address:#010x}  read by {len(readers)} fn: {[hex(r) for r in sorted(readers)][:6]}")
+    elif command == "strings":
+        for address, text, readers in firmware.string_references():
+            if re.search(r"[a-zA-Z]{4}", text):
+                print(f"{address:#07x} {text!r} refs={[hex(r) for r in sorted(readers)]}")
+    elif command == "dis":
+        print(firmware.disassemble(int(sys.argv[2], 0)))
+    elif command == "callers":
+        target = int(sys.argv[2], 0)
+        print([hex(a) for a in sorted(firmware.callers_of.get(target, set()))])
+    elif command == "ram":
+        for address, readers in sorted(firmware.ram_addresses().items()):
+            print(f"{address:#010x} refs={len(readers)} {[hex(r) for r in sorted(readers)][:8]}")
+    elif command == "fields":
+        readers, writers = firmware.field_accesses(int(sys.argv[2], 0))
+        for offset in sorted(set(readers) | set(writers)):
+            print(
+                f"+{offset:#04x} read={[hex(a) for a in sorted(readers[offset])]} "
+                f"written={[hex(a) for a in sorted(writers[offset])]}"
+            )
+    elif command == "raw":
+        start = int(sys.argv[2], 0)
+        length = int(sys.argv[3], 0) if len(sys.argv) > 3 else 0x80
+        print("\n".join(firmware.raw_listing(start, length)))
+    elif command == "find":
+        for line in firmware.matching_lines(re.compile(sys.argv[2])):
+            print(line)
+    elif command == "uses":
+        print([hex(a) for a in sorted(firmware.users_of(int(sys.argv[2], 0)))])
     elif command == "json":
         print(json.dumps({hex(a): [hex(c) for c in sorted(f.called_functions)] for a, f in firmware.functions.items()}, indent=1))
     else:
         raise SystemExit(f"unknown command {command}")
+
+
+if __name__ == "__main__":
+    main()
