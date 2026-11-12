@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 from firmware_map import FirmwareMap
-from trvzb.emulator import FirmwareEmulator
+from trvzb.emulator import FirmwareEmulator, RecordedCall, outcome_for_every_flag_pattern
 from trvzb.image import SLOT_A
 from trvzb.symbols import Symbols, load_symbols
 
@@ -37,12 +37,23 @@ def function_starts(stock_slot_a_path: Path) -> set[int]:
 
 def run_knob(
     stock_slot_a_path: Path, symbols: Symbols, function_starts: set[int], mode: int, pending: int, event: int
-) -> FirmwareEmulator:
+) -> tuple[RecordedCall, ...]:
+    """Calls the knob branch makes; identical under both stub flag patterns or the test fails."""
+    return outcome_for_every_flag_pattern(
+        lambda clobbered_flags: run_knob_once(stock_slot_a_path, symbols, function_starts, mode, pending, event, clobbered_flags)
+    )
+
+
+def run_knob_once(
+    stock_slot_a_path: Path, symbols: Symbols, function_starts: set[int], mode: int, pending: int, event: int,
+    clobbered_flags: int,
+) -> tuple[RecordedCall, ...]:
     emulator = FirmwareEmulator(
         slot=SLOT_A,
         slot_image=stock_slot_a_path.read_bytes(),
         function_starts=function_starts,
         allowed_functions={symbols.offset("clamp"), symbols.offset("switch8"), symbols.offset("operating_state_get")},
+        clobbered_flags=clobbered_flags,
     )
     settings_address, mode_field = symbols.field_address("settings.mode")
     _, minimum_field = symbols.field_address("settings.minimum_setpoint")
@@ -57,44 +68,44 @@ def run_knob(
     emulator.run_fragment_ending_in_pop(
         KNOB_BRANCH, registers={"r4": event, "r5": ui_edit_address, "r6": settings_address}, saved_register_count=5
     )
-    return emulator
+    return tuple(emulator.calls)
 
 
-def setpoint_calls(emulator: FirmwareEmulator, symbols: Symbols) -> list[tuple[int, int]]:
-    return [arguments[:2] for arguments in emulator.calls_to(symbols.offset("setpoint_set"))]
+def setpoint_calls(calls: tuple[RecordedCall, ...], symbols: Symbols) -> list[tuple[int, int]]:
+    return [call.arguments[:2] for call in calls if call.function_offset == symbols.offset("setpoint_set")]
 
 
-def mode_calls(emulator: FirmwareEmulator, symbols: Symbols) -> list[tuple[int, int]]:
-    return [arguments[:2] for arguments in emulator.calls_to(symbols.offset("mode_set"))]
+def mode_calls(calls: tuple[RecordedCall, ...], symbols: Symbols) -> list[tuple[int, int]]:
+    return [call.arguments[:2] for call in calls if call.function_offset == symbols.offset("mode_set")]
 
 
 def test_stock_knob__up_in_heat_raises_the_setpoint(stock_slot_a_path: Path, symbols: Symbols, function_starts: set[int]) -> None:
-    emulator = run_knob(stock_slot_a_path, symbols, function_starts, MODE_HEAT, pending=40, event=KNOB_UP_EVENT)
-    assert setpoint_calls(emulator, symbols) == [(41, LOCAL_CHANGE)]
-    assert mode_calls(emulator, symbols) == []
+    calls = run_knob(stock_slot_a_path, symbols, function_starts, MODE_HEAT, pending=40, event=KNOB_UP_EVENT)
+    assert setpoint_calls(calls, symbols) == [(41, LOCAL_CHANGE)]
+    assert mode_calls(calls, symbols) == []
 
 
 def test_stock_knob__down_in_heat_lowers_the_setpoint(stock_slot_a_path: Path, symbols: Symbols, function_starts: set[int]) -> None:
-    emulator = run_knob(stock_slot_a_path, symbols, function_starts, MODE_HEAT, pending=40, event=KNOB_DOWN_EVENT)
-    assert setpoint_calls(emulator, symbols) == [(39, LOCAL_CHANGE)]
+    calls = run_knob(stock_slot_a_path, symbols, function_starts, MODE_HEAT, pending=40, event=KNOB_DOWN_EVENT)
+    assert setpoint_calls(calls, symbols) == [(39, LOCAL_CHANGE)]
 
 
 def test_stock_knob__does_nothing_in_auto(stock_slot_a_path: Path, symbols: Symbols, function_starts: set[int]) -> None:
-    emulator = run_knob(stock_slot_a_path, symbols, function_starts, MODE_AUTO, pending=40, event=KNOB_UP_EVENT)
-    assert emulator.calls == []
+    calls = run_knob(stock_slot_a_path, symbols, function_starts, MODE_AUTO, pending=40, event=KNOB_UP_EVENT)
+    assert calls == ()
 
 
 def test_stock_knob__below_minimum_switches_off(stock_slot_a_path: Path, symbols: Symbols, function_starts: set[int]) -> None:
-    emulator = run_knob(stock_slot_a_path, symbols, function_starts, MODE_HEAT, pending=MINIMUM_SETPOINT, event=KNOB_DOWN_EVENT)
-    assert mode_calls(emulator, symbols) == [(MODE_OFF, LOCAL_CHANGE)]
+    calls = run_knob(stock_slot_a_path, symbols, function_starts, MODE_HEAT, pending=MINIMUM_SETPOINT, event=KNOB_DOWN_EVENT)
+    assert mode_calls(calls, symbols) == [(MODE_OFF, LOCAL_CHANGE)]
 
 
 def test_stock_knob__up_from_off_switches_to_heat_at_minimum(stock_slot_a_path: Path, symbols: Symbols, function_starts: set[int]) -> None:
-    emulator = run_knob(stock_slot_a_path, symbols, function_starts, MODE_OFF, pending=MINIMUM_SETPOINT - 1, event=KNOB_UP_EVENT)
-    assert mode_calls(emulator, symbols) == [(MODE_HEAT, LOCAL_CHANGE)]
-    assert setpoint_calls(emulator, symbols) == [(MINIMUM_SETPOINT, LOCAL_CHANGE)]
+    calls = run_knob(stock_slot_a_path, symbols, function_starts, MODE_OFF, pending=MINIMUM_SETPOINT - 1, event=KNOB_UP_EVENT)
+    assert mode_calls(calls, symbols) == [(MODE_HEAT, LOCAL_CHANGE)]
+    assert setpoint_calls(calls, symbols) == [(MINIMUM_SETPOINT, LOCAL_CHANGE)]
 
 
 def test_stock_knob__up_at_maximum_stays_at_maximum(stock_slot_a_path: Path, symbols: Symbols, function_starts: set[int]) -> None:
-    emulator = run_knob(stock_slot_a_path, symbols, function_starts, MODE_HEAT, pending=MAXIMUM_SETPOINT, event=KNOB_UP_EVENT)
-    assert setpoint_calls(emulator, symbols) == [(MAXIMUM_SETPOINT, LOCAL_CHANGE)]
+    calls = run_knob(stock_slot_a_path, symbols, function_starts, MODE_HEAT, pending=MAXIMUM_SETPOINT, event=KNOB_UP_EVENT)
+    assert setpoint_calls(calls, symbols) == [(MAXIMUM_SETPOINT, LOCAL_CHANGE)]

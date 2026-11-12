@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import struct
 
-from trvzb.emulator import FirmwareEmulator
+import pytest
+from trvzb.emulator import FirmwareEmulator, FlagDependence, outcome_for_every_flag_pattern
 from trvzb.image import SLOT_A, decode_branch_with_link_target, encode_branch_with_link
 
 SCRATCH_CODE = 0xF400
@@ -47,3 +48,31 @@ def test_patched_function_start__runs_instead_of_being_stubbed() -> None:
         emulator.write_code(STUB_TARGET, thumb(movs_r0_42, bx_lr))
         emulator.run_fragment_ending_in_pop(SCRATCH_CODE, registers={"r5": RESULT_ADDRESS}, saved_register_count=5)
         assert emulator.read_byte(RESULT_ADDRESS) == expected
+
+
+def run_ne_reliant_code(clobbered_flags: int) -> int:
+    movs_r4_7, cmp_r4_8, beq_over_store, strb_r4_to_r5, pop_r3_r7_pc = 0x2407, 0x2C08, 0xD000, 0x702C, 0xBDF8
+    code = (
+        thumb(movs_r4_7, cmp_r4_8)
+        + encode_branch_with_link(SCRATCH_CODE + 4, STUB_TARGET)
+        + thumb(beq_over_store, strb_r4_to_r5, pop_r3_r7_pc)
+    )
+    emulator = FirmwareEmulator(slot=SLOT_A, slot_image=EMPTY_IMAGE, function_starts={STUB_TARGET}, clobbered_flags=clobbered_flags)
+    emulator.write_code(SCRATCH_CODE, code)
+    emulator.run_fragment_ending_in_pop(SCRATCH_CODE, registers={"r5": RESULT_ADDRESS}, saved_register_count=5)
+    return emulator.read_byte(RESULT_ADDRESS)
+
+
+def test_outcome_for_every_flag_pattern__catches_code_relying_on_flags_surviving_a_call() -> None:
+    with pytest.raises(FlagDependence):
+        outcome_for_every_flag_pattern(run_ne_reliant_code)
+
+
+def test_outcome_for_every_flag_pattern__returns_the_shared_outcome() -> None:
+    assert outcome_for_every_flag_pattern(lambda pattern: "same") == "same"
+
+
+def test_call_function__refuses_a_function_it_would_only_stub() -> None:
+    emulator = FirmwareEmulator(slot=SLOT_A, slot_image=EMPTY_IMAGE, function_starts={STUB_TARGET})
+    with pytest.raises(ValueError, match="stubbed"):
+        emulator.call_function(STUB_TARGET)

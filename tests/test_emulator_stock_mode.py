@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 from firmware_map import FirmwareMap
-from trvzb.emulator import FirmwareEmulator
+from trvzb.emulator import FirmwareEmulator, outcome_for_every_flag_pattern
 from trvzb.image import SLOT_A
 from trvzb.symbols import Symbols, load_symbols
 
@@ -35,11 +35,24 @@ def mode_after_mode_set(
     stock_slot_a_path: Path, symbols: Symbols, function_starts: set[int],
     current_mode: int, requested_mode: int, time_synced: int, weekday_enabled: int,
 ) -> int:
+    """The mode afterwards; identical under both stub flag patterns or the test fails."""
+    return outcome_for_every_flag_pattern(
+        lambda clobbered_flags: mode_after_mode_set_once(
+            stock_slot_a_path, symbols, function_starts, current_mode, requested_mode, time_synced, weekday_enabled, clobbered_flags
+        )
+    )
+
+
+def mode_after_mode_set_once(
+    stock_slot_a_path: Path, symbols: Symbols, function_starts: set[int],
+    current_mode: int, requested_mode: int, time_synced: int, weekday_enabled: int, clobbered_flags: int,
+) -> int:
     emulator = FirmwareEmulator(
         slot=SLOT_A,
         slot_image=stock_slot_a_path.read_bytes(),
         function_starts=function_starts,
         allowed_functions={symbols.offset("mode_set")},
+        clobbered_flags=clobbered_flags,
     )
     settings_address, mode_field = symbols.field_address("settings.mode")
     runtime_address, time_synced_field = symbols.field_address("runtime.time_synced")

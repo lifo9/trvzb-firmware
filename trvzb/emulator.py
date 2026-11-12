@@ -43,10 +43,11 @@ PERIPHERAL_REGIONS = ((0x40000000, 0x100000), (0xE0000000, 0x100000))
 RETURN_TRAP = 0xFF00
 INSTRUCTION_LIMIT = 20000
 ARGUMENT_REGISTERS = (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3)
-# What a stub leaves in the caller-clobbered registers and flags: distinctive
-# values, and condition flags N=1 Z=0 C=1 V=1.
+# What a stub leaves in the caller-clobbered registers: distinctive values.
 CLOBBERED_REGISTER_VALUES = {UC_ARM_REG_R1: 0xBAD00001, UC_ARM_REG_R2: 0xBAD00002, UC_ARM_REG_R3: 0xBAD00003, UC_ARM_REG_R12: 0xBAD0000C}
-CLOBBERED_FLAGS = 0xB0000000
+# Condition flags a stub leaves: N=1 Z=0 C=1 V=1 and its complement. One fixed
+# pattern only catches half of the mistakes, so scenarios run under both.
+COMPLEMENTARY_FLAG_PATTERNS = (0xB0000000, 0x40000000)
 CALLEE_SAVED_REGISTERS = {
     "r3": UC_ARM_REG_R3, "r4": UC_ARM_REG_R4, "r5": UC_ARM_REG_R5, "r6": UC_ARM_REG_R6, "r7": UC_ARM_REG_R7,
 }
@@ -65,6 +66,7 @@ class FirmwareEmulator:
     function_starts: set[int]
     allowed_functions: set[int] = field(default_factory=set)
     patched_ranges: list[tuple[int, int]] = field(default_factory=list)
+    clobbered_flags: int = COMPLEMENTARY_FLAG_PATTERNS[0]
     return_values: dict[int, int | Callable[[tuple[int, int, int, int]], int]] = field(default_factory=dict)
     calls: list[RecordedCall] = field(default_factory=list)
 
@@ -96,7 +98,7 @@ class FirmwareEmulator:
         engine.reg_write(UC_ARM_REG_R0, return_value & 0xFFFFFFFF)
         for register, clobbered_value in CLOBBERED_REGISTER_VALUES.items():
             engine.reg_write(register, clobbered_value)
-        engine.reg_write(UC_ARM_REG_APSR_NZCV, CLOBBERED_FLAGS)
+        engine.reg_write(UC_ARM_REG_APSR_NZCV, self.clobbered_flags)
         engine.reg_write(UC_ARM_REG_PC, engine.reg_read(UC_ARM_REG_LR))
 
     def write_code(self, image_offset: int, code: bytes) -> None:
@@ -127,6 +129,10 @@ class FirmwareEmulator:
 
     def call_function(self, function_offset: int, arguments: tuple[int, ...] = ()) -> int:
         """Run a whole function with up to four arguments; return r0."""
+        if function_offset in self.stubbed_starts:
+            raise ValueError(
+                f"{function_offset:#x} is stubbed, so calling it would not run it; add it to allowed_functions"
+            )
         if len(arguments) > len(ARGUMENT_REGISTERS):
             raise ValueError("at most four register arguments")
         for register, value in zip(ARGUMENT_REGISTERS, arguments):
@@ -143,3 +149,19 @@ class FirmwareEmulator:
 
     def calls_to(self, function_offset: int) -> list[tuple[int, int, int, int]]:
         return [call.arguments for call in self.calls if call.function_offset == function_offset]
+
+
+class FlagDependence(AssertionError):
+    """A scenario's outcome depended on the condition flags a callee left."""
+
+
+def outcome_for_every_flag_pattern(scenario: Callable[[int], object]) -> object:
+    """Run `scenario(clobbered_flags)` under each complementary pattern; return the shared outcome.
+
+    Raises FlagDependence if the outcomes differ: the code under test relied on
+    flags surviving a call, which real callees do not guarantee.
+    """
+    outcomes = [scenario(pattern) for pattern in COMPLEMENTARY_FLAG_PATTERNS]
+    if any(outcome != outcomes[0] for outcome in outcomes[1:]):
+        raise FlagDependence(f"outcome depends on flags left by a callee: {outcomes}")
+    return outcomes[0]
