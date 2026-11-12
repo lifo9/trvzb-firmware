@@ -110,6 +110,12 @@ confidence = "medium"
 summary = "Returns runtime.operating_state; the knob only steps the value when it is 2"
 
 [[function]]
+name = "valve_task_state_get"
+offset = 0x41b8
+confidence = "medium"
+summary = "Returns the valve task's status byte at 0x20000334; bit 2 set while a move is in progress"
+
+[[function]]
 name = "valve_set_target_percent"
 offset = 0x4a64
 confidence = "high"
@@ -198,6 +204,12 @@ name = "setpoint_set"
 offset = 0x6c18
 confidence = "high"
 summary = "(setpoint, is_local): is_local defers the save 2 s and the re-evaluation 5 s"
+
+[[function]]
+name = "thermostat_apply_or_retry"
+offset = 0x6d7c
+confidence = "high"
+summary = "Runs the thermostat now if the valve is idle; while it moves, retries every 3 s. The stock knob's timer callback"
 
 [[function]]
 name = "valve_set_percent_and_notify"

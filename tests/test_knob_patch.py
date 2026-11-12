@@ -117,14 +117,18 @@ def knob_outcome(
 APPLY_OPENING = (
     ("datapoint_report_builder", VALVE_OPENING_DATAPOINT, LOCAL_REPORT),
     ("settings_save_deferred", SAVE_DELAY),
-    ("thermostat_kick", 1),
+    ("thermostat_apply_or_retry",),
 )
 
 
 def without_second_argument_for(calls: tuple[tuple[str, int, int], ...]) -> tuple[tuple, ...]:
-    """Calls with the arguments that matter: save and kick take one argument."""
-    single_argument = {"settings_save_deferred", "thermostat_kick"}
-    return tuple((name, first) if name in single_argument else (name, first, second) for name, first, second in calls)
+    """Calls with the arguments that matter: the save takes one, the apply none."""
+    single_argument = {"settings_save_deferred"}
+    no_argument = {"thermostat_apply_or_retry"}
+    return tuple(
+        (name,) if name in no_argument else (name, first) if name in single_argument else (name, first, second)
+        for name, first, second in calls
+    )
 
 
 @pytest.mark.parametrize(
@@ -312,3 +316,60 @@ def test_short_press_in_manual__returns_to_auto_as_stock_does(
     patched = short_press_calls(slot_image, function_starts, symbols, patch_set, MODE_HEAT)
     assert patched == (("mode_set", MODE_AUTO, LOCAL),)
     assert patched == short_press_calls(slot_image, function_starts, symbols, None, MODE_HEAT)
+
+
+# --- Applying a detent while the valve moves ----------------------------------------
+
+VALVE_TASK_STATE = 0x20000334
+VALVE_MOVING = 0x04
+THERMOSTAT_RETRY_TIMER, THERMOSTAT_RETRY_MILLISECONDS = 0x20000788, 3000
+
+
+def detent_with_valve(
+    slot_name: str, image: bytes, function_starts: set[int], symbols: Symbols, patch_set: PatchSet, valve_state: int
+) -> tuple[int, tuple[tuple[str, int, int], ...]]:
+    """(thermostat-loop mark after one detent up, calls), with the apply chain running for real."""
+    settings_address, mode_field = symbols.field_address("settings.mode")
+    _, opening_field = symbols.field_address("settings.valve_opening_degree")
+    ui_edit_address, _ = symbols.field_address("ui_edit.pending_value")
+    runtime_address, operating_field = symbols.field_address("runtime.operating_state")
+    _, loop_mark_field = symbols.field_address("runtime.thermostat_loop_enabled")
+
+    def scenario(clobbered_flags: int) -> tuple[int, tuple[tuple[str, int, int], ...]]:
+        emulator = make_emulator(
+            slot_name, image, function_starts, symbols, patch_set, clobbered_flags,
+            ("clamp", "switch8", "operating_state_get", "thermostat_kick", "thermostat_apply_or_retry", "valve_task_state_get"),
+        )
+        emulator.write_byte(settings_address + mode_field, MODE_HEAT)
+        emulator.write_byte(settings_address + opening_field, 20)
+        emulator.write_byte(runtime_address + operating_field, RUNNING)
+        emulator.write_byte(VALVE_TASK_STATE, valve_state)
+        emulator.run_fragment_ending_in_pop(
+            KNOB_BRANCH, registers={"r4": KNOB_UP, "r5": ui_edit_address, "r6": settings_address}, saved_register_count=5
+        )
+        calls = tuple(
+            (symbols.name_at(call.function_offset) or hex(call.function_offset), call.arguments[0], call.arguments[1])
+            for call in emulator.calls
+        )
+        return emulator.read_byte(runtime_address + loop_mark_field), calls
+
+    return outcome_for_every_flag_pattern(scenario)
+
+
+def test_detent_while_the_valve_moves__retries_instead_of_marking_the_loop(
+    slot_image: tuple[str, bytes], function_starts: set[int], symbols: Symbols, patch_set: PatchSet
+) -> None:
+    """Marking the loop while the valve moves made it record a target the valve dropped,
+    leaving the valve behind the shown opening after a quick spin."""
+    loop_mark, calls = detent_with_valve(*slot_image, function_starts, symbols, patch_set, VALVE_MOVING)
+    assert loop_mark == 0
+    timer_starts = [call for call in calls if call[0] == "0x61dc"]
+    assert timer_starts == [("0x61dc", THERMOSTAT_RETRY_TIMER, THERMOSTAT_RETRY_MILLISECONDS)]
+
+
+def test_detent_with_the_valve_idle__applies_at_once(
+    slot_image: tuple[str, bytes], function_starts: set[int], symbols: Symbols, patch_set: PatchSet
+) -> None:
+    loop_mark, calls = detent_with_valve(*slot_image, function_starts, symbols, patch_set, 0)
+    assert loop_mark == 1
+    assert not [call for call in calls if call[0] == "0x61dc"]

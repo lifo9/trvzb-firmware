@@ -118,9 +118,12 @@ valve_opening_report:
     bl datapoint_report_builder
     ldr r0, =SAVE_DELAY_MILLISECONDS
     bl settings_save_deferred
-    @ Apply now rather than at the thermostat loop's next pass.
-    movs r0, #1
-    bl thermostat_kick
+    @ Apply now if the valve is idle; while it is still moving from an earlier
+    @ detent, retry every 3 s until it is idle, as the stock knob does.
+    @ thermostat_kick would mark the thermostat loop to run regardless, and
+    @ the loop records a target the moving valve drops, leaving the valve
+    @ behind the shown opening after a quick spin.
+    bl thermostat_apply_or_retry
     pop {r4, pc}
     .ltorg
 
