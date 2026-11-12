@@ -1,6 +1,6 @@
-# DO NOT FLASH: the header version differs from the stock SoC application's
-# built-in 5124, so the valve would re-install this image on every boot (see
-# docs/update-and-recovery.md).
+# Obsolete: it cannot clean up a re-install loop, it would start a new one
+# (header 5126 vs built-in 5124). A loop is cleared by an ABORT reply instead
+# (docs/update-and-recovery.md).
 # Recovery: Sonoff's stock 1.4.4 content, untouched, with only the file
 # version raised so Zigbee2MQTT offers it. Gives a valve stuck repeating the
 # end of an update a complete, consistent one to finish. The MCU payload and

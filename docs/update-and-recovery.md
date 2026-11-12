@@ -44,21 +44,38 @@ the aftermath of experiment 1 in `experiments.md`). Zigbee2MQTT's
 `installed_version` echoes the header it served, so read `genOta`
 `currentFileVersion` (client direction) for the real value.
 
+A device caught in the loop is released by answering its `UpgradeEndRequest`
+with a ZCL Default Response, status ABORT (`0x95`), command `0x06`, cluster
+`genOta`, the request's transaction number. A Zigbee2MQTT external extension
+can send it with `endpoint.defaultResponse(0x06, 0x95, 0x0019, tsn)`. The SoC
+then deletes the stored image: valve-1 stayed quiet through a later power cut.
+
+## The MCU is updated before the update ends — proven
+
+Sonoff's developer describes the order in zigbee-herdsman-converters issue
+#6657 (2023-12-08): after the last image block the SoC updates the second MCU
+first and only then sends `UpgradeEndRequest`, up to 30 minutes later (which is
+why Zigbee2MQTT allows image type 8199 an hour). Experiment 1 shows the same
+timing: last block at 14:22:23 local time, 12 minutes of near-silence, a reboot
+at 14:34:00, the first `UpgradeEndRequest` at 14:38:35.
+
 Consequences:
 
-- An image whose SoC part is stock 1.4.4 must carry header version 5124.
-  Zigbee2MQTT only offers it with `force` in the index entry, and the client
-  then skips it as the version it already runs (client source; not tried on
-  a device). **A modified application-MCU
-  payload cannot be delivered on the stock 1.4.4 SoC image by OTA.**
-- The way forward is a genuine Sonoff release newer than the installed one,
-  keeping its header version unchanged and modifying only the MCU subelement.
-  None exists as of 2026-11-12: 1.4.4 is the newest in the Zigbee2MQTT index,
-  on Sonoff's own OTA server and in the official changelog.
-- A device caught in the loop is released by answering its `UpgradeEndRequest`
-  with a ZCL Default Response, status ABORT (`0x95`), command `0x06`, cluster
-  `genOta`, the request's transaction number; a Zigbee2MQTT external extension
-  can send it with `endpoint.defaultResponse(0x06, 0x95, 0x0019, tsn)`.
+- **The MCU payload reaches the MCU before the header mismatch matters.** An
+  image with a raised header version (needed for Zigbee2MQTT to offer it) gets
+  its MCU part transferred. The re-install loop that follows only concerns the
+  SoC image, and the ABORT reply clears it. So a modified MCU payload *can* be
+  delivered on the stock 1.4.4 SoC image. Have the ABORT extension loaded before
+  the flash, so it answers the first `UpgradeEndRequest`.
+- **`SUCCESS` in `UpgradeEndRequest` does not mean the MCU accepted the
+  payload.** Sonoff's 1.4.0 and 1.4.1 ship a byte-identical MCU subelement
+  (MCU 1.2.08), which the MCU's strictly-higher version gate must refuse, and
+  those updates still end normally. Acceptance needs its own observable.
+- Alternative not yet tried: a custom OTA server in a Zigbee2MQTT extension
+  that advertises a version other than 5124 while serving a file whose header
+  says 5124. The stock client never cross-checks the two, so no re-install
+  loop. But Sonoff's MCU forwarding may look the subelement up by the
+  advertised version and find nothing.
 
 ## The application updates itself — proven
 

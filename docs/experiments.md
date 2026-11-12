@@ -55,6 +55,14 @@ checksum rejected) or `1.3.2`. Until that is known, plan the next MCU version
 above `1.3.2`, and do not assume stock `1.3.1` would be refused or accepted.
 The knob patch's visible behaviour will be the first real observable.
 
+The transfer itself very likely happened. After the last image block (14:22:23
+local time) the valve was nearly silent for 12 minutes, rebooted at 14:34:00
+and sent its first `UpgradeEndRequest` at 14:38:35. That matches Sonoff's own
+account of the SoC updating the MCU between the last block and that request
+(see `update-and-recovery.md`). The checksum is less likely to have failed than
+first thought: the OTA file carries no checksum for the MCU part, so the SoC must
+compute the sum it notifies from the stored bytes.
+
 **Still open:** an observable for the MCU version or the failure flag in
 settings `+5`. Candidate: Zigbee2MQTT's generic `read` converter on `genBasic`
 and the manufacturer cluster `0xfc11`, looking for an attribute that carries

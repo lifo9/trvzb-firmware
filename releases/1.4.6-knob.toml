@@ -1,6 +1,6 @@
-# DO NOT FLASH: the header version differs from the stock SoC application's
-# built-in 5124, so the valve would re-install this image on every boot (see
-# docs/update-and-recovery.md).
+# The header version differs from the stock SoC application's built-in 5124:
+# flash only with the ABORT extension loaded, or the SoC re-installs it on
+# every boot (docs/update-and-recovery.md).
 # The knob sets the valve opening, with explicit auto / manual / off modes
 # (docs/operating-model.md). MCU version 1.3.3 is above both versions valve-1
 # may run after experiment 1; file version 0x1407 follows 1.4.6-recovery.
