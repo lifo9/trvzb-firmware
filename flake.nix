@@ -25,6 +25,7 @@
               pythonPackages.pytest
             ]))
             pkgs.curl
+            pkgs.pkgsCross.arm-embedded.buildPackages.binutils
             pkgs.just
             pkgs.kubectl
           ];
