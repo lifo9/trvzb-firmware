@@ -21,10 +21,13 @@ for it; the MCU checks a transfer sum supplied by the Zigbee SoC. See
 - Analysis: datapoint map, thermostat → valve → motor chain, knob path and
   display decoded.
 - Delivery: a rebuilt OTA can be served through Zigbee2MQTT's local index.
-- Acceptance test: a version-strings-only image is being flashed — see
+- Acceptance test: a version-strings-only image was accepted and installed by
+  a real valve (release `1.4.5-verstest`) — see
   [docs/experiments.md](docs/experiments.md).
-- Patch (knob sets valve opening degree; woken screen shows valve %, `FU` at
-  100 %): designed, not yet written.
+- Tooling: patch sets assembled per slot with binutils, verified against
+  stock, stock knob behaviour pinned under emulation.
+- Patch (knob sets valve opening degree and the auto/manual/off modes of
+  [docs/operating-model.md](docs/operating-model.md)): designed, not yet written.
 
 ## Setup
 
@@ -56,6 +59,18 @@ image is linked at MCU address `0x400`, so MCU address = image offset +
 - [docs/update-and-recovery.md](docs/update-and-recovery.md) — how updates reach the MCU, failure modes, patch rules
 - [docs/experiments.md](docs/experiments.md) — flashes performed on a real device
 
+## Layout
+
+- `trvzb/` — shared model: OTA file, slots and link addresses, MCU versions,
+  symbols, patch sets, image building, verification, emulation
+- `tools/` — command lines over it (below)
+- `analysis/symbols.toml` — named functions, labels, RAM fields, tables and
+  never-patch ranges, checked against the binary by `tests/test_facts.py`
+- `patches/<name>/` — a patch set: `patch.S` and `sites.toml`
+- `releases/<id>.toml` — what was (or will be) flashed, with its image hash
+- `devices.toml` — every flashed valve and flash
+- `tests/` — synthetic-OTA tests, fact tests, emulated behaviour, golden hashes
+
 ## Tools
 
 - `tools/firmware_map.py` — function discovery, string and literal
@@ -64,5 +79,7 @@ image is linked at MCU address `0x400`, so MCU address = image offset +
 - `tools/calls.py` — exhaustive `bl` call-site scan, independent of function
   discovery
 - `tools/extract_mcu_image.py` — split both MCU slots out of an OTA
-- `tools/build_ota.py` — rebuild an OTA with a modified MCU payload, patching
-  both slots identically
+- `tools/build_patch.py` — assemble a patch set per slot with binutils
+- `tools/build_ota.py` — build an image: patch set plus raised versions
+- `tools/build_release.py` — rebuild a release from its manifest (`just build`)
+- `tools/verify_ota.py` — check a built image against stock (`just verify`)

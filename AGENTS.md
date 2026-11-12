@@ -12,6 +12,18 @@ Guidelines for agents working in this repository.
 - Record every flash in [docs/experiments.md](docs/experiments.md): image,
   diff from stock, SHA-512, device state before and after, outcome.
 
+## Releases and flashing
+
+1. Write or change the patch set in `patches/<name>/` (`patch.S`, `sites.toml`)
+   and its emulated tests; `just test` must pass.
+2. Add `releases/<id>.toml` without `sha512`; `just build <id>` prints the
+   hash. Review `just verify <id>`: every check PASS, every site listing read.
+3. Record the hash in the manifest, commit, and tag `release/<id>`.
+4. Flash only with explicit approval for that release. Its MCU version must be
+   above the installed one on the target valve (see `devices.toml`).
+5. Record the flash in `devices.toml` and the outcome in
+   [docs/experiments.md](docs/experiments.md).
+
 ## Firmware files
 
 - Vendor firmware and build output live in `work/` and are never committed.
