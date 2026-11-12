@@ -19,8 +19,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
-import shutil
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -72,27 +70,6 @@ def site_listing(patch_set: PatchSet) -> list[str]:
     return lines
 
 
-def objdump_listing(patch_set: PatchSet) -> list[str]:
-    """Second disassembler over slot A's site bytes, when binutils is available."""
-    if shutil.which("arm-none-eabi-objdump") is None:
-        return ["(arm-none-eabi-objdump not on PATH; skipped)"]
-    lines = []
-    with tempfile.TemporaryDirectory() as temporary_directory:
-        for site in patch_set.sites:
-            site_path = Path(temporary_directory) / f"{site.name}.bin"
-            site_path.write_bytes(site.patched_bytes["A"])
-            result = subprocess.run(
-                [
-                    "arm-none-eabi-objdump", "-D", "-b", "binary", "-marm", "-Mforce-thumb",
-                    f"--adjust-vma={SLOT_A.mcu_address(site.offset):#x}", str(site_path),
-                ],
-                capture_output=True, text=True, check=True,
-            )
-            lines.append(f"--- objdump, site {site.name}, slot A")
-            lines += [line for line in result.stdout.splitlines() if line.startswith("    ") or line.startswith("   ")]
-    return lines
-
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("built")
@@ -129,7 +106,7 @@ def main() -> None:
             checks["image is the recorded release"] = (
                 [] if built_sha512 == manifest.sha512 else [f"image {built_sha512[:16]}…, manifest records {manifest.sha512[:16]}…"]
             )
-    for line in site_listing(patch_set) + objdump_listing(patch_set):
+    for line in site_listing(patch_set):
         print(line)
     print()
     failed = False

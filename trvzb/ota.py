@@ -71,11 +71,6 @@ class OtaFile:
         start = self.slot_offset(slot_name) + slot_relative_offset
         self.data[start : start + len(new_bytes)] = new_bytes
 
-    def patch_both_slots(self, slot_relative_offset: int, old_bytes: bytes, new_bytes: bytes) -> None:
-        """Apply one same-length patch at the same offset inside both slots."""
-        for slot_name in ("A", "B"):
-            self.patch_slot(slot_name, slot_relative_offset, old_bytes, new_bytes)
-
     def find_in_slot_a(self, pattern: bytes) -> list[int]:
         """Slot-relative offsets of every match inside slot A."""
         slot_start = self.slot_offset("A")

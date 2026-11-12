@@ -58,25 +58,22 @@ def test_find_in_slot_a__returns_slot_relative_offsets(synthetic_ota: SyntheticO
     assert ota.find_in_slot_a(b"1.3.1") == list(VERSION_STRING_OFFSETS)
 
 
-def test_patch_both_slots__writes_same_bytes_at_same_offset_in_both_slots(synthetic_ota: SyntheticOta) -> None:
+def test_patch_slot__changes_only_that_slot(synthetic_ota: SyntheticOta) -> None:
     ota = OtaFile(str(synthetic_ota.path))
-    ota.patch_both_slots(0x40, b"1.3.1", b"1.3.2")
-    expected = sorted(
-        [synthetic_ota.slot_start("A") + 0x44, synthetic_ota.slot_start("B") + 0x44]
-    )
-    assert changed_offsets(synthetic_ota.data, bytes(ota.data)) == expected
+    ota.patch_slot("B", 0x40, b"1.3.1", b"1.3.2")
+    assert changed_offsets(synthetic_ota.data, bytes(ota.data)) == [synthetic_ota.slot_start("B") + 0x44]
 
 
-def test_patch_both_slots__raises_when_old_bytes_do_not_match(synthetic_ota: SyntheticOta) -> None:
+def test_patch_slot__raises_when_old_bytes_do_not_match(synthetic_ota: SyntheticOta) -> None:
     ota = OtaFile(str(synthetic_ota.path))
     with pytest.raises(ValueError, match="slot A"):
-        ota.patch_both_slots(0x41, b"1.3.1", b"1.3.2")
+        ota.patch_slot("A", 0x41, b"1.3.1", b"1.3.2")
 
 
-def test_patch_both_slots__raises_when_length_changes(synthetic_ota: SyntheticOta) -> None:
+def test_patch_slot__raises_when_length_changes(synthetic_ota: SyntheticOta) -> None:
     ota = OtaFile(str(synthetic_ota.path))
     with pytest.raises(ValueError, match="length"):
-        ota.patch_both_slots(0x40, b"1.3.1", b"1.3.10")
+        ota.patch_slot("A", 0x40, b"1.3.1", b"1.3.10")
 
 
 def test_set_file_version__writes_little_endian_at_0x0e(synthetic_ota: SyntheticOta) -> None:
@@ -170,10 +167,10 @@ def test_main__derives_header_versions_from_arguments(synthetic_ota: SyntheticOt
     assert OtaFile(str(output_path)).header_versions() == ("00001406", "00002000")
 
 
-def test_patch_both_slots__raises_when_patch_runs_past_slot_end(synthetic_ota: SyntheticOta) -> None:
+def test_patch_slot__raises_when_patch_runs_past_slot_end(synthetic_ota: SyntheticOta) -> None:
     ota = OtaFile(str(synthetic_ota.path))
     with pytest.raises(ValueError, match="outside"):
-        ota.patch_both_slots(synthetic_ota.slot_length - 2, b"abcd", b"wxyz")
+        ota.patch_slot("A", synthetic_ota.slot_length - 2, b"abcd", b"wxyz")
 
 
 def test_main__refuses_a_patch_set_touching_a_protected_range(synthetic_ota: SyntheticOta, tmp_path: Path) -> None:
