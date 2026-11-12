@@ -105,9 +105,11 @@ installing. zigbee-herdsman sends nothing outside an update session (the
 command declares a response, so no automatic default response either). A
 temporary Zigbee2MQTT external extension sent the ABORT at 18:18:13 local
 time; the reboots stopped (the last was 18:13:56), and the OTA client then read
-`imageUpgradeStatus` 0 (normal) and `currentFileVersion` 5124. The ZBMINIR2
-report says the device then discards the image and the fix survives power
-cuts; on the TRVZB that is not yet confirmed.
+`imageUpgradeStatus` 0 (normal) and `currentFileVersion` 5124. **The abort
+survives a power cut:** after a battery pull (rejoin at 18:39:32) the valve
+sent no `UpgradeEndRequest` for 10 minutes, where the loop always asked within
+1–5 minutes of booting. So the SoC discards the stored image on a server
+abort, as the ZBMINIR2 report describes, and the extension was removed.
 
 The planned recovery, `1.4.6-recovery` (stock content, header 5126), would
 have restarted the loop at 5126 and was cancelled. Re-sending stock 1.4.4
