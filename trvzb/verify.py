@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from trvzb.image import SLOT_A, SLOT_ADDRESS_DELTA, SLOT_B, decode_branch_with_link_target
+from trvzb.image import SLOT_A, SLOT_ADDRESS_DELTA, SLOT_B, decode_branch_with_link_target, iterate_call_sites
 from trvzb.ota import FILE_VERSION_OFFSET, HEADER_STRING_LENGTH, HEADER_STRING_OFFSET, OtaFile
 from trvzb.patch import SLOT_NAMES, PatchSet
 from trvzb.version import McuVersion
@@ -59,6 +59,21 @@ def site_bytes_mismatches(built: OtaFile, patch_set: PatchSet) -> list[str]:
             found = slot_bytes(built, slot_name)[start : start + site.length]
             if found != site.patched_bytes[slot_name]:
                 problems.append(f"site {site.name} slot {slot_name}: image holds {found.hex()}, patch set says {site.patched_bytes[slot_name].hex()}")
+    return problems
+
+
+def sites_splitting_stock_calls(patch_set: PatchSet, stock_slot_a: bytes) -> list[str]:
+    """Sites that start or end inside a stock 32-bit `bl`, leaving half of it behind.
+
+    Thumb-1 code is halfword-aligned, and `bl` is the only 32-bit instruction
+    this image uses in code, so a site boundary inside one splits it.
+    """
+    call_sites = {call_site for call_site, _ in iterate_call_sites(stock_slot_a)}
+    problems = []
+    for site in patch_set.sites:
+        for boundary_name, boundary in (("start", site.offset), ("end", site.offset + site.length)):
+            if boundary - 2 in call_sites:
+                problems.append(f"site {site.name} {boundary_name} {boundary:#x} splits the stock bl at {boundary - 2:#x}")
     return problems
 
 

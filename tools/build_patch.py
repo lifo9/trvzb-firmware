@@ -40,6 +40,7 @@ from trvzb.image import SLOT_A, SLOT_B, Slot  # noqa: E402
 from trvzb.ota import OtaFile  # noqa: E402
 from trvzb.patch import SLOT_NAMES, PatchSet, PatchSite  # noqa: E402
 from trvzb.symbols import Symbols, load_symbols  # noqa: E402
+from trvzb.verify import sites_splitting_stock_calls  # noqa: E402
 
 ASSEMBLER_FLAGS = ["-mcpu=cortex-m0plus", "-mthumb"]
 SLOTS = {"A": SLOT_A, "B": SLOT_B}
@@ -193,7 +194,11 @@ def build_patch_set(patch_directory: Path, stock_ota: OtaFile, symbols: Symbols)
             stock_bytes[slot_name] = bytes(stock_ota.data[start : start + length])
         patched_bytes = {slot_name: bytes_by_slot[slot_name][site.name] for slot_name in SLOT_NAMES}
         patch_sites.append(PatchSite(site.name, site.offset, stock_bytes, patched_bytes))
-    return PatchSet(patch_set_name, patch_sites)
+    patch_set = PatchSet(patch_set_name, patch_sites)
+    split_calls = sites_splitting_stock_calls(patch_set, bytes(stock_ota.data[stock_ota.slot_offset("A") : stock_ota.slot_offset("A") + stock_ota.slot_length]))
+    if split_calls:
+        raise ValueError("; ".join(split_calls))
+    return patch_set
 
 
 def main() -> None:

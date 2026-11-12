@@ -38,6 +38,7 @@ from trvzb.verify import (  # noqa: E402
     site_bytes_mismatches,
     site_ranges,
     site_slot_differences,
+    sites_splitting_stock_calls,
     slot_bytes,
     unexpected_changes,
     version_consistency,
@@ -104,6 +105,7 @@ def main() -> None:
     checks = {
         "image holds the reviewed site bytes": site_bytes_mismatches(built, patch_set),
         "only declared bytes changed": unexpected_changes(stock, built, allowed),
+        "no site splits a stock call": sites_splitting_stock_calls(patch_set, slot_bytes(stock, "A")),
         "site bytes differ between slots only by relocation": site_slot_differences(patch_set),
         "every bl lands on a function start": branch_targets_outside_functions(patch_set, stock_function_starts(stock)),
         "MCU version consistent and raised": version_consistency(stock, built, version_offsets),

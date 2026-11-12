@@ -18,6 +18,7 @@ from trvzb.verify import (
     branch_targets_outside_functions,
     site_bytes_mismatches,
     site_slot_differences,
+    sites_splitting_stock_calls,
     unexpected_changes,
     version_consistency,
 )
@@ -91,7 +92,7 @@ def test_main__passes_an_identity_build(stock_ota_path: Path, tmp_path: Path) ->
         env=environment, capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert result.stdout.count("PASS") == 5
+    assert result.stdout.count("PASS") == 6
 
 
 def test_site_bytes_mismatches__flags_an_image_built_from_a_different_patch(synthetic_ota: SyntheticOta) -> None:
@@ -102,3 +103,13 @@ def test_site_bytes_mismatches__flags_an_image_built_from_a_different_patch(synt
     actually_built.apply(built, protected_ranges=[])
     assert site_bytes_mismatches(built, reviewed)
     assert not site_bytes_mismatches(built, actually_built)
+
+
+def test_sites_splitting_stock_calls__flags_a_site_ending_inside_a_call(stock_slot_a_path: Path) -> None:
+    stock_slot_a = stock_slot_a_path.read_bytes()
+    stock_bytes = stock_slot_a[0x31A0:0x31A4]
+    half_call = PatchSite("half_call", 0x31A0, {"A": stock_bytes, "B": stock_bytes}, {"A": stock_bytes, "B": stock_bytes})
+    whole_call = PatchSite("whole_call", 0x31A0, {"A": stock_slot_a[0x31A0:0x31A6], "B": stock_slot_a[0x31A0:0x31A6]},
+                           {"A": stock_slot_a[0x31A0:0x31A6], "B": stock_slot_a[0x31A0:0x31A6]})
+    assert sites_splitting_stock_calls(PatchSet("half", [half_call]), stock_slot_a)
+    assert not sites_splitting_stock_calls(PatchSet("whole", [whole_call]), stock_slot_a)
