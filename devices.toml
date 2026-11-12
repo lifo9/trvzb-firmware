@@ -22,3 +22,10 @@ date = 2026-11-12
 installed_file_version = 5124
 mcu_version = "1.3.3"
 mcu_version_evidence = "accepted: the child-lock screen shows 8C; the SoC was not re-installed (ABORT won the race), so it still runs 5124"
+
+[[device.flash]]
+release = "1.4.8-knob"
+date = 2026-11-12
+installed_file_version = 5124
+mcu_version = "1.3.4"
+mcu_version_evidence = "accepted: the woken screen shows the valve opening and the knob steps it by 10 %; the SoC was not re-installed (ABORT won), so it still runs 5124"

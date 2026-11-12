@@ -186,3 +186,37 @@ valve still regulates normally.
 `01 02 13 02` long after the previous boot), so the SoC fills it some time
 after booting. That points to a live readout from the MCU; the value should
 become `01 02 13 03`.
+
+## 3. Knob patch (1.4.8 / MCU 1.3.4)
+
+**Image:** release `1.4.8-knob` (tag `release/1.4.8-knob`): stock 1.4.4, MCU
+version 1.3.4, file version `0x1408`, patch set `patches/knob-valve-percent`.
+SHA-512:
+
+```
+c5284248aba199667a763457612907673255bd222bc1f06c621d8e5553b4fb38
+f49584e461cee980d1c1ca9d9b8cefbda107c47b4567fd7fd9ea42557a509a32
+```
+
+**Delivery:** as for the canary, with the ABORT extension armed for `0x1408`.
+`ota_update/update` at 20:08:14 local time on 2026-11-12; last block about
+20:45:20; reboot 20:56:55; `UpgradeEndRequest` for 5128 at 20:57:57, aborted
+in the same second, no reboot after it. The extension was removed and the local
+index emptied at 21:00.
+
+**Device before:** battery 61 %, mode heat, setpoint 35 °C, opening 76 % (set by
+the Home Assistant thermostat), child lock off.
+
+**Outcome: accepted.** The woken screen shows the valve opening (52) instead of
+the setpoint, and each detent steps it by 10 %. Zigbee2MQTT received every step
+as a `valve_opening_degree` report (52 → 62 → 72 → 52), so the patch's
+datapoint 119 report reaches Home Assistant.
+
+**Device after:** settings kept. The post-update travel calibration came out
+normal again (closing steps 335, idle steps 313, limit voltages 1808 and
+2713 mV), so the canary's 631 / 20 was a one-off measurement.
+
+Until the Home Assistant automations follow `docs/operating-model.md`, the
+existing pin automation forces heat mode (undoing the knob's off and auto),
+and the mirror automation overwrites the opening at the thermostat's next
+change.
