@@ -56,4 +56,4 @@ verify release:
     if [ -f work/releases/{{release}}.patch.json ]; then
         patch_arguments=(--patch-set work/releases/{{release}}.patch.json)
     fi
-    python3 -I tools/verify_ota.py work/releases/{{release}}.ota "${patch_arguments[@]}"
+    python3 -I tools/verify_ota.py work/releases/{{release}}.ota --manifest releases/{{release}}.toml "${patch_arguments[@]}"

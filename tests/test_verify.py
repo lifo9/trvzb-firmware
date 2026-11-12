@@ -103,3 +103,20 @@ def test_sites_splitting_stock_calls__flags_a_site_ending_inside_a_call(stock_sl
                            {"A": stock_slot_a[0x31A0:0x31A6], "B": stock_slot_a[0x31A0:0x31A6]})
     assert sites_splitting_stock_calls(PatchSet("half", [half_call]), stock_slot_a)
     assert not sites_splitting_stock_calls(PatchSet("whole", [whole_call]), stock_slot_a)
+
+
+def test_main__with_manifest_fails_an_image_that_is_not_the_recorded_release(stock_ota_path: Path, tmp_path: Path) -> None:
+    built_path = tmp_path / "built.ota"
+    environment = {**os.environ, "TRVZB_OTA": str(stock_ota_path)}
+    subprocess.run(
+        [sys.executable, "-I", str(REPOSITORY_ROOT / "tools" / "build_ota.py"), str(built_path),
+         "--mcu-version", "1.3.3", "--file-version", "0x1405"],
+        env=environment, check=True, capture_output=True,
+    )
+    result = subprocess.run(
+        [sys.executable, "-I", str(REPOSITORY_ROOT / "tools" / "verify_ota.py"), str(built_path),
+         "--manifest", str(REPOSITORY_ROOT / "releases" / "1.4.5-verstest.toml")],
+        env=environment, capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "FAIL  image is the recorded release" in result.stdout

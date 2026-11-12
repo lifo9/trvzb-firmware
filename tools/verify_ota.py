@@ -7,13 +7,17 @@ or inside the patch, and that the MCU version is consistent and raised. Prints
 each patch site's listing in both slots for review. Exits non-zero on any
 problem.
 
+With --manifest, also checks that the stock image is the one the release pins
+and that the image is the one the release records.
+
 Usage:
-    verify_ota.py <built.ota> [--patch-set work/patches/x.json]
+    verify_ota.py <built.ota> [--patch-set work/patches/x.json] [--manifest releases/<id>.toml]
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import shutil
 import subprocess
@@ -28,9 +32,10 @@ import capstone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from build_release import load_manifest  # noqa: E402
 from firmware_map import FirmwareMap  # noqa: E402
 from trvzb.image import SLOT_A, SLOT_B  # noqa: E402
-from trvzb.ota import OtaFile  # noqa: E402
+from trvzb.ota import STOCK_OTA_PATH, OtaFile  # noqa: E402
 from trvzb.patch import SLOT_NAMES, PatchSet  # noqa: E402
 from trvzb.version import McuVersion  # noqa: E402
 from trvzb.verify import (  # noqa: E402
@@ -92,6 +97,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("built")
     parser.add_argument("--patch-set", help="patch set JSON the image was built with")
+    parser.add_argument("--manifest", type=Path, help="release manifest the image claims to be")
     arguments = parser.parse_args()
 
     stock = OtaFile()
@@ -110,6 +116,19 @@ def main() -> None:
         "every bl lands on a function start": branch_targets_outside_functions(patch_set, stock_function_starts(stock)),
         "MCU version consistent and raised": version_consistency(stock, built, version_offsets),
     }
+    if arguments.manifest:
+        manifest = load_manifest(arguments.manifest)
+        stock_sha512 = hashlib.sha512(open(STOCK_OTA_PATH, "rb").read()).hexdigest()
+        built_sha512 = hashlib.sha512(open(arguments.built, "rb").read()).hexdigest()
+        checks["stock is the image the release pins"] = (
+            [] if stock_sha512 == manifest.stock_sha512 else [f"stock {stock_sha512[:16]}…, manifest pins {manifest.stock_sha512[:16]}…"]
+        )
+        if manifest.sha512 is None:
+            checks["image is the recorded release"] = ["the manifest records no sha512 yet"]
+        else:
+            checks["image is the recorded release"] = (
+                [] if built_sha512 == manifest.sha512 else [f"image {built_sha512[:16]}…, manifest records {manifest.sha512[:16]}…"]
+            )
     for line in site_listing(patch_set) + objdump_listing(patch_set):
         print(line)
     print()

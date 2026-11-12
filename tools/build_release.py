@@ -51,6 +51,8 @@ def load_manifest(path: Path) -> ReleaseManifest:
     with open(path, "rb") as manifest_file:
         document = tomllib.load(manifest_file)
     patch_set = document.get("patch_set")
+    if document["id"] != path.stem:
+        raise ValueError(f"release id {document['id']!r} differs from its file name {path.name!r}")
     return ReleaseManifest(
         release_id=document["id"],
         stock_sha512=document["stock_sha512"],
@@ -71,13 +73,22 @@ def build_release(manifest: ReleaseManifest, stock_path: str, output_directory: 
     logic_patch = None
     if manifest.patch_set_directory is not None:
         logic_patch = build_patch_set(manifest.patch_set_directory, OtaFile(stock_path), symbols)
-        (output_directory / f"{manifest.release_id}.patch.json").write_text(logic_patch.to_json() + "\n")
     image = build_image(OtaFile(stock_path), manifest.mcu_version, manifest.file_version, logic_patch, symbols.protected_ranges)
     output_path = output_directory / f"{manifest.release_id}.ota"
-    image.write(str(output_path))
-    built_sha512 = hashlib.sha512(output_path.read_bytes()).hexdigest()
+    # Written under a temporary name and renamed only once it matches, so a
+    # mismatched build never sits where `just verify` and flashing look.
+    candidate_path = output_directory / f"{manifest.release_id}.ota.candidate"
+    image.write(str(candidate_path))
+    built_sha512 = hashlib.sha512(candidate_path.read_bytes()).hexdigest()
     if manifest.sha512 is not None and built_sha512 != manifest.sha512:
+        candidate_path.unlink()
         raise BuildRefused(f"release {manifest.release_id} built to {built_sha512}, manifest records {manifest.sha512}")
+    candidate_path.replace(output_path)
+    patch_set_path = output_directory / f"{manifest.release_id}.patch.json"
+    if logic_patch is not None:
+        patch_set_path.write_text(logic_patch.to_json() + "\n")
+    elif patch_set_path.exists():
+        patch_set_path.unlink()
     return output_path, built_sha512
 
 
