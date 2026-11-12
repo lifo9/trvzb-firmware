@@ -86,6 +86,12 @@ confidence = "high"
 summary = "Turns raw inputs into events 1-10; called once per UI screen"
 
 [[function]]
+name = "operating_state_get"
+offset = 0x6460
+confidence = "medium"
+summary = "Returns runtime.operating_state; the knob only steps the value when it is 2"
+
+[[function]]
 name = "valve_set_target_percent"
 offset = 0x4a64
 confidence = "high"
@@ -231,7 +237,7 @@ fields = { screen_direction = 0x0a, maximum_setpoint = 0x0c, minimum_setpoint = 
 [[ram]]
 name = "runtime"
 address = 0x20000348
-fields = { thermostat_loop_enabled = 0x0c }
+fields = { operating_state = 0x04, thermostat_loop_enabled = 0x0c }
 
 [[ram]]
 name = "valve"
@@ -241,7 +247,7 @@ fields = { target_percent = 0x06, current_percent = 0x07, travel_steps = 0x34 }
 [[ram]]
 name = "ui_edit"
 address = 0x2000043e
-fields = { pending_value = 0x03 }
+fields = { pending_value = 0x03, alternate_screen = 0x04 }
 
 [[ram]]
 name = "framebuffer"
