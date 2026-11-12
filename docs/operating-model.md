@@ -1,95 +1,106 @@
 # Operating model
 
 How the patched valve is meant to behave inside a Home Assistant heating setup.
-This describes the target once the knob patch is flashed and the Home Assistant
-automations are adapted; the stock firmware's knob still moves the temperature
+This describes the target once the dial patch is flashed and the Home Assistant
+automations are adapted; the stock firmware's dial still moves the temperature
 setpoint.
+
+## Modes
+
+The valve's own three modes carry the state, so it is visible on the screen and
+survives Home Assistant being down. Auto is redefined from "follow the valve's
+internal weekly schedule" to "the Home Assistant thermostat is in charge".
+
+| Mode | Valve mode (`system_mode`) | Screen | Who sets the opening |
+|---|---|---|---|
+| **Auto** | `auto` | `Auto` icon on | the Home Assistant thermostat |
+| **Manual** | `heat` | `Auto` icon off | the user, at the dial or in Home Assistant; HA stops writing |
+| **Off** | `off` | `OF` | nobody; the valve is closed |
+
+## Controls
+
+| Action | Result |
+|---|---|
+| Turn or press while the screen is asleep | wake the screen and show the valve opening; nothing changes |
+| Turn the dial | step the opening ±10 % (0–100, `FU` at 100) **and switch to manual** |
+| Set the opening in Home Assistant (slider) | the valve moves; **switch to manual** |
+| Short press, screen awake, in manual | **back to auto**: the thermostat's value is applied at once |
+| Short press, screen awake, in auto | show the valve opening only |
+| Turn one detent below `0` | **off**: valve closed, Home Assistant thermostat off |
+| Turn clockwise from `OF` | **on, in auto**: Home Assistant thermostat on, its value applied |
+| Switch the HA thermostat off / on | valve to off / to auto |
+| Manual left alone | **falls back to auto at the room's next scheduled change** in Home Assistant |
+| Dial press, 3 s | child lock on/off (`LC`), stock |
+| Dial press, 3 s while showing `OF` | pairing mode for 3 minutes, stock (kept: the documented way to re-pair) |
+| Configuration key under the cover, 3 s | rotate the display 180°, stock |
 
 ## The setup it assumes
 
-- **Heating on and off is one state, shared by the valve and HA.** The valve's
-  own mode is either heat or off (`OF`), and a Home Assistant thermostat (for
-  example Versatile Thermostat in valve mode) is either heating or off. Two
-  automations keep them in step, in both directions: the valve switching to off
-  turns the HA thermostat off, the HA thermostat switching off puts the valve in
-  off, and likewise for on.
-- **While heating, the valve's own thermostat is pinned open.** A Home Assistant
-  automation holds the setpoint at its 35 °C maximum and `valve_closing_degree`
-  at 100. The valve's internal thermostat then always decides "open", so
-  `valve_opening_degree` (datapoint 119) is applied continuously as the live
-  valve position (see [control-flow.md](control-flow.md)). The pin no longer
-  forces heat mode; the mode follows the shared on/off state.
-- **The HA thermostat computes the valve opening.** It writes its percentage to
-  a helper, and an automation mirrors that helper onto `valve_opening_degree`,
-  but only when the helper *changes*, when the thermostat switches from off to
-  heat, or when the valve rejoins the network.
-- **The patched dial writes the same value.** Each detent steps
-  `valve_opening_degree` by 10 % (clamped 0–100), applies it immediately, and
-  reports it over Zigbee. The dial and the Home Assistant entity are two views
-  of one value. One detent below 0 % is off; one detent up from off is on.
+- **Both auto and manual keep the valve's internal thermostat pinned open.** The
+  setpoint is held at its 35 °C maximum in manual (heat) mode, and every weekly
+  schedule slot is set to 35 °C so auto mode behaves the same.
+  `valve_closing_degree` stays 100. The internal thermostat then always decides
+  "open", so `valve_opening_degree` (datapoint 119) is the live valve position
+  in both modes (see [control-flow.md](control-flow.md)), and the mode is purely
+  a flag for who is in charge.
+- **The HA thermostat writes only in auto.** It computes a percentage into a
+  helper; an automation mirrors that helper onto `valve_opening_degree` while
+  the valve is in auto, when the helper changes, when the valve enters auto, and
+  when the valve rejoins the network in auto.
+- **A slider change in auto means manual.** When `valve_opening_degree` changes
+  to a value that differs from the thermostat's helper while the valve is in
+  auto, an automation switches the valve to manual.
+- **On/off is shared.** The valve entering off turns the HA thermostat off, and
+  the HA thermostat switching off puts the valve in off; likewise for on, which
+  lands in auto. Each direction acts only when the two disagree, so the echo of
+  a change does nothing.
+- **Manual falls back to auto at the room's next scheduled change.** All
+  schedules live in Home Assistant, one per room; when a room's schedule
+  changes its thermostat's target, a manual valve in that room returns to
+  auto. The valve's internal weekly schedule is never used for scheduling.
 
-## Controls at the valve
+## Several valves
 
-| Gesture | Patched behaviour |
-|---|---|
-| first detent or press on a sleeping screen | wake the screen, show the valve opening |
-| dial clockwise | opening +10 %, up to 100 % (`FU`) |
-| dial counter-clockwise | opening −10 %, down to `0` |
-| dial counter-clockwise below `0` | heating off: valve mode off (`OF`), HA thermostat off |
-| dial clockwise from `OF` | heating on: valve mode heat, HA thermostat on, its value re-applied |
-| dial press, short | show the valve opening only (stock: switches auto ↔ manual) |
-| dial press, 3 s | child lock on/off (stock) |
-| dial press, 3 s while showing `OF` | pairing mode for 3 minutes (stock, kept deliberately: it is the documented way to re-pair) |
-| configuration key under the cover, 3 s | rotate the display 180° (stock) |
-
-## Who controls the valve
-
-Last writer wins. Nothing locks the value.
-
-| Situation | Who sets the opening | Valve | Screen (when woken) | Lasts until |
-|---|---|---|---|---|
-| Heating on, HA thermostat in charge | HA thermostat, through the mirror | its computed % | that % | its next *different* computed value |
-| Dial turned while heating | dial, ±10 % per detent | new %, at once | new %, `FU` at 100 | HA thermostat's next different value, heating switched off and on, or the valve rejoining |
-| Opening set in HA (slider) while heating | user | set % | that % | same as the dial |
-| Heating switched off — at the dial (below `0`) or in HA | shared off state | closed: the valve's own off mode, closing degree 100 | `OF` | heating switched on again |
-| Heating switched on — at the dial (up from `OF`) or in HA | HA thermostat | its computed %, replacing any earlier manual setting | that % | as the first row |
-| Home Assistant, Zigbee2MQTT or the network down | dial only; it works locally, including off and on | dial's % or closed | dial's % or `OF` | the system returns; HA then adopts the valve's on/off state when the valve reports it |
-| Valve rejoins after an outage | mirror re-asserts the HA thermostat's value (if heating) | its computed % | that % | as the first row |
-| Child lock on | nobody locally: the dial is ignored | unchanged | `LC` | lock off |
-| Valve's own sensor ≥ 35 °C | valve's internal thermostat decides "closed" | closed (closing degree 100) | — | temperature drops |
-| Open-window detection on and triggered | valve's internal logic | closed | `OP` | window event ends (detection is off in the reference setup) |
+The model is per valve. Each valve pairs with one Home Assistant thermostat
+and that room's schedule; rooms may run different schedules. The automations
+(mirror, manual detection, on/off sync, schedule fallback) should therefore
+be written once and instantiated per valve — a blueprint or a templated
+package taking the valve, its thermostat, its helper and its schedule — not
+copied by hand. Each valve also needs the one-time setup: child lock off and
+every weekly schedule slot at 35 °C.
 
 ## Consequences
 
+- **Who is in charge is always visible**: the `Auto` icon. One short press hands
+  control back.
+- **Manual holds predictably**: until a press, the room's next scheduled
+  change, or heating being switched off and on — never silently replaced by a recomputed
+  thermostat value.
 - **Heating off means closed.** In off mode the valve's own thermostat holds it
-  closed, so neither the dial nor the slider opens it; turning the dial up from
-  `OF` switches heating back on instead.
-- **Overrides are not timed.** A manual setting holds only until the HA
-  thermostat recomputes a different value, which can be one cycle (5 minutes)
-  or hours. A fixed-length override (for example, hold for two hours, then hand
-  back) is an HA-side change: detect a valve value that differs from the
-  thermostat's helper, and pause the mirror for a while. Not built.
-- **No feedback loop on the opening.** The dial's report updates the valve
-  entity, never the thermostat's helper, so the mirror does not fire on it.
-- **The on/off sync must not ping-pong.** Each direction should act only when
-  the two states disagree, so that the echo of a change does nothing.
-- **The dial keeps working without Home Assistant.** It acts inside the valve.
+  closed; turning the dial up from `OF` switches heating back on in auto.
+- **The dial works without Home Assistant**, including manual, off and on. When
+  the system returns, Home Assistant adopts the valve's mode, since the state
+  lives in the valve.
 
-## Open items for the patch
+## Patch requirements
 
-- **The child lock must be off** for the dial to work. The reference device has
-  it on. A 3 s dial press toggles it at the valve.
-- **The short press must stop switching modes.** Stock, the dial press
-  (button 0, event 1) toggles heat and auto. In auto the valve follows its
-  weekly schedule (16–19 °C in the reference setup), so its thermostat would
-  close the valve. The patch makes a short press only wake the screen and show
-  the percentage.
-- **A long press in `OF` enters pairing mode.** Kept as stock: it takes a
-  deliberate 3 s hold and is the documented way to re-pair. Whether pairing
-  mode makes an already-joined valve leave the network is unverified.
-- **Off and on from the dial already exist in stock firmware** (turning below
-  the minimum calls the mode setter with off; turning up from off calls it with
-  heat). The patch must keep these transitions while the dial steps the valve
-  opening instead of the setpoint: below `0` → off, up from off → heat.
-- **The first detent only wakes the screen** (stock behaviour, kept). Turns
-  after that change the value.
+What the firmware must do differently from stock:
+
+1. A detent on an awake screen steps `valve_opening_degree` ±10 % instead of the
+   setpoint, applies and reports it, and sets the mode to heat (manual).
+2. Below `0`, switch to off (stock already turns below the minimum into off).
+3. Up from off, switch to auto (stock switches to heat).
+4. A short press on an awake screen switches manual → auto, and does nothing in
+   auto (stock toggles both ways).
+5. A first detent or press on a sleeping screen only wakes it (the first detent
+   already does in stock; the press needs verifying).
+6. The woken screen shows the valve opening: `0`–`90`, `FU` at 100.
+
+Unchanged: the child lock gesture, the pairing gesture in `OF`, screen rotation.
+
+## Setup requirements outside the firmware
+
+- **Child lock off.** The reference device has it on; a 3 s dial press toggles it.
+- **Weekly schedule at 35 °C in every slot**, so auto mode stays pinned open.
+- Home Assistant automations as described above, replacing the current pin
+  (which forces heat mode) and mirror (which writes regardless of mode).
