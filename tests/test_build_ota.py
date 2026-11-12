@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 import struct
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from build_patch import build_patch_set
 from trvzb.ota import OtaFile
+from trvzb.patch import PatchSet, PatchSite
+from trvzb.symbols import load_symbols
 from conftest import REPOSITORY_ROOT, VERSION_STRING_OFFSETS, SyntheticOta, build_synthetic_ota_bytes
 
 EXPERIMENT_1_SHA512 = (
@@ -101,11 +105,13 @@ def run_build_ota(
     mcu_version: str = "1.3.2",
     file_version: str = "0x1405",
     check: bool = True,
+    patch_set_path: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    patch_arguments = ["--patch-set", str(patch_set_path)] if patch_set_path else []
     return subprocess.run(
         [
             sys.executable, "-I", str(REPOSITORY_ROOT / "tools" / "build_ota.py"), str(output_path),
-            "--mcu-version", mcu_version, "--file-version", file_version,
+            "--mcu-version", mcu_version, "--file-version", file_version, *patch_arguments,
         ],
         env={**os.environ, "TRVZB_OTA": str(stock_path)},
         capture_output=True,
@@ -168,3 +174,23 @@ def test_patch_both_slots__raises_when_patch_runs_past_slot_end(synthetic_ota: S
     ota = OtaFile(str(synthetic_ota.path))
     with pytest.raises(ValueError, match="outside"):
         ota.patch_both_slots(synthetic_ota.slot_length - 2, b"abcd", b"wxyz")
+
+
+def test_main__refuses_a_patch_set_touching_a_protected_range(synthetic_ota: SyntheticOta, tmp_path: Path) -> None:
+    startup_site = PatchSite("startup", 0x40, {"A": b"1.3.1", "B": b"1.3.1"}, {"A": b"xxxxx", "B": b"xxxxx"})
+    patch_set_path = tmp_path / "startup.json"
+    patch_set_path.write_text(PatchSet("touches-startup", [startup_site]).to_json())
+    result = run_build_ota(synthetic_ota.path, tmp_path / "out.ota", check=False, patch_set_path=patch_set_path)
+    assert result.returncode != 0
+    assert "startup_and_vectors" in result.stderr
+    assert not (tmp_path / "out.ota").exists()
+
+
+@pytest.mark.skipif(shutil.which("arm-none-eabi-as") is None, reason="arm-none-eabi binutils not on PATH")
+def test_main__identity_patch_set_reproduces_experiment_1_image(stock_ota_path: Path, tmp_path: Path) -> None:
+    patch_set = build_patch_set(REPOSITORY_ROOT / "tests" / "fixtures" / "patches" / "identity", OtaFile(str(stock_ota_path)), load_symbols())
+    patch_set_path = tmp_path / "identity.json"
+    patch_set_path.write_text(patch_set.to_json())
+    output_path = tmp_path / "out.ota"
+    run_build_ota(stock_ota_path, output_path, patch_set_path=patch_set_path)
+    assert hashlib.sha512(output_path.read_bytes()).hexdigest() == EXPERIMENT_1_SHA512
