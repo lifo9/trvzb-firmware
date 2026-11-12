@@ -18,7 +18,7 @@ list.
 
 | dp | Type | Meaning | Handler / field | Confidence |
 |---|---|---|---|---|
-| 1 | bool | on/off | `0x6b54` | high |
+| 1 | bool | on/off: on → mode 0 (heat), off → mode 1 | `0x6b54` (mode setter) | high |
 | 2 | value | occupied heating setpoint, bounded by settings `+0xc`/`+0xd` | `0x6c18` | high |
 | 3 | value | local temperature (report) | `0x6324` | high |
 | 4 | enum | system mode / preset | `0x6460`, `0x6cb8` | medium-high |

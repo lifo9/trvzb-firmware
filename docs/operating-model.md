@@ -55,11 +55,13 @@ Last writer wins. Nothing locks the value.
 ## Open items for the patch
 
 - **The child lock must be off** for the knob to work. The reference device has
-  it on.
+  it on. A long press on button 0 (event 3) toggles it at the valve.
 - **Which press wakes the screen needs verifying.** Stock button 0's short
-  press (event 1) toggles the valve on/off (`0x6b54`). If a press used only to
-  see the percentage toggles the valve off, it closes until the pin automation
-  restores heat mode about 10 s later. Before choosing "show on press", confirm
+  press (event 1) toggles the mode between heat and auto (`0x6b54`). In auto
+  the valve follows its weekly schedule (16–19 °C in the reference setup),
+  so its thermostat closes the valve until the pin automation restores heat
+  about 10 s later. A press meant only to show the percentage must not do
+  that. Before choosing "show on press", confirm
   whether a press on a sleeping screen only wakes it (as the knob's first detent
   does) and which physical control is button 0 versus button 1.
 - **The first detent only wakes the screen** (stock behaviour, kept). Turns

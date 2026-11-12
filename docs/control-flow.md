@@ -84,9 +84,9 @@ table at `0x3062`:
 
 | Event | Source | Meaning | Handler |
 |---|---|---|---|
-| 1 | button 0 | short press | `0x30dc` → on/off `0x6b54` |
+| 1 | button 0 | short press | `0x30dc` → toggles mode heat ↔ auto via `0x6b54`; never off |
 | 2 | button 0 | hold / repeat | ignored |
-| 3 | button 0 | long press | `0x30a4` → `0x6aec` |
+| 3 | button 0 | long press | `0x30a4` → `0x6aec`: toggles the child lock (settings `+0x1d`) |
 | 4 | button 0 | very long press | ignored |
 | **5** | knob channel 2 | **one detent up** | `0x3104` |
 | **6** | knob channel 3 | **one detent down** | `0x3104` |
@@ -94,6 +94,12 @@ table at `0x3062`:
 
 Knob channels bypass the button debounce/hold state machine: one detent is
 exactly one event, with no acceleration or repeat.
+
+`0x6b54(mode, is_local)` is the mode setter, writing settings `+0x1c`: 0 =
+heat, 1 = off, 2 = auto (weekly schedule). Evidence: dp 1 maps on → 0 and
+off → 1; the short press only ever swaps 0 and 2; and the setpoint setter
+`0x6c18` keeps separate setpoints for mode 0 (`+0x1b`) and mode 2 (`+0x1a`).
+Mode numbering: medium-high confidence.
 
 ### The knob path, `0x3104`–`0x31a6`
 
