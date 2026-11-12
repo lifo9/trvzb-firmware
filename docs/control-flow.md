@@ -160,7 +160,9 @@ Mode numbering: medium-high confidence.
   blank. Used today for `LC` (child lock), `OP` (open window), `OF` (off).
 - No percent sign is driven anywhere in the firmware. Whether the glass has
   one is unknown; `0xd24`'s all-on test would show it.
-- Screen direction: two icon-bit layouts chosen by settings `+0xa` (0 or 2),
-  written by dp 127 and toggled by a 3 s press on the configuration key
-  (event 9). Confirmed by the vendor manual, which documents that press as
-  changing the display direction.
+- Screen direction: settings `+0xa` (0 or 2), written by dp 127 and toggled by
+  a 3 s press on the configuration key (event 9), as the vendor manual
+  documents. Verified under emulation in both slots: in direction 0 the
+  framebuffer holds the left character's font glyph in byte 0 and the right in
+  byte 2; in direction 2 each glyph is turned 180° (segments a↔d, b↔e, c↔f)
+  and the two are swapped (`tests/test_emulator_stock_display.py`).

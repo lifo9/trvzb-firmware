@@ -97,3 +97,18 @@ def stock_slot_a_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     path = tmp_path_factory.mktemp("stock") / "mcu_app_a.bin"
     path.write_bytes(bytes(ota.data[start : start + ota.slot_length]))
     return path
+
+
+@pytest.fixture(scope="session")
+def stock_slot_b_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Slot B of the stock image, linked at 0x8000."""
+    from trvzb.ota import OtaFile
+
+    ota_path = Path(os.environ.get("TRVZB_OTA", REPOSITORY_ROOT / "work" / "trvzb_v1.4.4.ota"))
+    if not ota_path.exists():
+        pytest.skip("stock OTA not present; run `just fetch`")
+    ota = OtaFile(str(ota_path))
+    start = ota.slot_offset("B")
+    path = tmp_path_factory.mktemp("stock") / "mcu_app_b.bin"
+    path.write_bytes(bytes(ota.data[start : start + ota.slot_length]))
+    return path
