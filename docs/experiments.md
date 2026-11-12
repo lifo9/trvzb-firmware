@@ -63,10 +63,22 @@ account of the SoC updating the MCU between the last block and that request
 first thought: the OTA file carries no checksum for the MCU part, so the SoC must
 compute the sum it notifies from the stored bytes.
 
-**Still open:** an observable for the MCU version or the failure flag in
-settings `+5`. Candidate: Zigbee2MQTT's generic `read` converter on `genBasic`
-and the manufacturer cluster `0xfc11`, looking for an attribute that carries
-either.
+**Candidate observable (2026-11-12, after the loop was cleared and a power
+cut):** ZCL Discover Attributes on endpoint 1 found one undocumented attribute:
+`0xfc11`/`0x0011`, a character string, here the bytes `01 02 13 02`. Neither
+zigbee-herdsman-converters nor the ZHA quirk defines it. `13 02` matches MCU
+1.3.2 in Sonoff's header notation (`vers:…,00001302`). It is not yet known
+whether the SoC fills it from the MCU or from the image header it forwarded.
+The MCU can report its version live: it answers the version query `0x0B`
+with the packed version parsed from its own version string (`0x4dfe`), and its
+update-success report `0x0e` carries the new version (`0x53e8`–`0x5402`). The
+value survived the power cut, which favours a live readout. Nothing else on
+`genBasic` (`swBuildId` 1.4.4 is the SoC), client-side `genOta` or `0xfc11`
+carries a version. Read it with Zigbee2MQTT's `read` converter on cluster
+`0xfc11`, attribute 17.
+
+**Still open:** whether `0xfc11`/`0x0011` reflects the running MCU. The next
+accepted or refused flash settles it.
 
 **Aftermath: an update retry loop (found the same day).** From the moment the
 update installed (14:34) valve-1 rejoined the network every 1–5 minutes; no
