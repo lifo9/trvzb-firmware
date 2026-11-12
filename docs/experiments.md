@@ -216,7 +216,12 @@ datapoint 119 report reaches Home Assistant.
 normal again (closing steps 335, idle steps 313, limit voltages 1808 and
 2713 mV), so the canary's 631 / 20 was a one-off measurement.
 
-Until the Home Assistant automations follow `docs/operating-model.md`, the
-existing pin automation forces heat mode (undoing the knob's off and auto),
-and the mirror automation overwrites the opening at the thermostat's next
-change.
+**Home Assistant side (from 21:35):** the blueprint described in
+`docs/operating-model.md` replaced the old automations, which forced heat mode
+and wrote the opening in every mode. Tested on the valve the same evening:
+- a detent switches to manual and Home Assistant leaves the opening alone;
+- a short press returns to auto and the thermostat's value is applied at once;
+- turning down to `OF` switches the thermostat off, and turning up from `OF`
+  returns to auto with the thermostat on;
+- an opening set remotely while in auto (as the slider does) switches to
+  manual and keeps the value.

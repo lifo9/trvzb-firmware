@@ -20,15 +20,18 @@ for it; the MCU checks a transfer sum supplied by the Zigbee SoC. See
 
 - Analysis: datapoint map, thermostat → valve → motor chain, knob path and
   display decoded.
-- Delivery: a rebuilt OTA can be served through Zigbee2MQTT's local index.
-- Acceptance test: a real valve's Zigbee side accepted and installed a
-  version-strings-only image (release `1.4.5-verstest`); whether the MCU took
-  its part is not yet known — see
-  [docs/experiments.md](docs/experiments.md).
+- Delivery: a rebuilt OTA is served through Zigbee2MQTT's local index. The
+  Zigbee SoC forwards the MCU part before it ends the update, and a ZCL ABORT
+  to that end request (`tools/zigbee2mqtt/abort-ota-end.mjs`) keeps the SoC
+  from re-installing its own, unchanged part forever — see
+  [docs/update-and-recovery.md](docs/update-and-recovery.md).
+- Acceptance: proven on a real valve by release `1.4.7-canary`, which only
+  redraws one display glyph — see [docs/experiments.md](docs/experiments.md).
 - Tooling: patch sets assembled per slot with binutils, verified against
   stock, stock knob behaviour pinned under emulation.
-- Patch (knob sets valve opening degree and the auto/manual/off modes of
-  [docs/operating-model.md](docs/operating-model.md)): designed, not yet written.
+- Patch: release `1.4.8-knob` runs on the reference valve since 2026-11-12.
+  The knob steps the valve opening by 10 % and the screen shows it, within the
+  auto/manual/off modes of [docs/operating-model.md](docs/operating-model.md).
 
 ## Setup
 

@@ -1,9 +1,9 @@
 # Operating model
 
-How the patched valve is meant to behave inside a Home Assistant heating setup.
-This describes the target once the knob patch is flashed and the Home Assistant
-automations are adapted; the stock firmware's knob still moves the temperature
-setpoint.
+How the patched valve behaves inside a Home Assistant heating setup. Running on
+the reference valve since 2026-11-12: release `1.4.8-knob` in the valve, and a
+Home Assistant blueprint, one instance per valve, for the automations described
+below (kept with the Home Assistant configuration, outside this repository).
 
 ## Modes
 
@@ -29,7 +29,7 @@ internal weekly schedule" to "the Home Assistant thermostat is in charge".
 | Turn one detent below `0` | **off**: valve closed, Home Assistant thermostat off |
 | Turn clockwise from `OF` | **on, in auto**: Home Assistant thermostat on, its value applied |
 | Switch the HA thermostat off / on | valve to off / to auto |
-| Manual left alone | **falls back to auto at the room's next scheduled change** in Home Assistant |
+| Manual left alone | **falls back to auto at the room's next target change** in Home Assistant (its schedule, or a target set by hand) |
 | Knob press, 3 s | child lock on/off (`LC`), stock |
 | Knob press, 3 s while showing `OF` | pairing mode for 3 minutes, stock (kept: the documented way to re-pair) |
 | Configuration key under the cover, 3 s | rotate the display 180°, stock |
@@ -54,10 +54,13 @@ internal weekly schedule" to "the Home Assistant thermostat is in charge".
   the HA thermostat switching off puts the valve in off; likewise for on, which
   lands in auto. Each direction acts only when the two disagree, so the echo of
   a change does nothing.
-- **Manual falls back to auto at the room's next scheduled change.** All
-  schedules live in Home Assistant, one per room; when a room's schedule
-  changes its thermostat's target, a manual valve in that room returns to
-  auto. The valve's internal weekly schedule is never used for scheduling.
+- **Manual falls back to auto at the room's next target change.** All
+  schedules live in Home Assistant, one per room; when the room's thermostat
+  gets a new target, from its schedule or set by hand, a manual valve in that
+  room returns to auto. Only a change from one real target to another counts:
+  a thermostat reload passes through an off state without a target and must
+  not end manual. The valve's internal weekly schedule is never used for
+  scheduling.
 
 ## Several valves
 
@@ -73,9 +76,9 @@ every weekly schedule slot at 35 °C.
 
 - **Who is in charge is always visible**: the `Auto` icon. One short press hands
   control back.
-- **Manual holds predictably**: until a press, the room's next scheduled
-  change, or heating being switched off and on — never silently replaced by a recomputed
-  thermostat value.
+- **Manual holds predictably**: until a press, the room's next target
+  change, or heating being switched off and on — never silently replaced by a
+  recomputed thermostat value.
 - **Heating off means closed.** In off mode the valve's own thermostat holds it
   closed; turning the knob up from `OF` switches heating back on in auto.
 - **The knob works without Home Assistant**, including manual, off and on. When
@@ -105,12 +108,17 @@ Unchanged: the child lock gesture, the pairing gesture in `OF`, screen rotation.
 
 ## Setup requirements outside the firmware
 
-- **Child lock off.** The reference device has it on; a 3 s knob press toggles it.
+- **Child lock off.** Devices may ship with it on; a 3 s knob press toggles it.
 - **Weekly schedule at 35 °C in every slot**, so auto mode stays pinned open.
+  The blueprint keeps it there, raising only the temperatures and keeping the
+  slot times.
 - **Every weekday enabled in datapoint 118** (settings `+0x9e`–`+0xa4`): the
   mode setter refuses every change on a disabled day, so neither the knob nor
   Home Assistant could switch heating on or off that day, and the heat
   fallback of requirement 3 would not help. How to read datapoint 118 over
   Zigbee is not known yet.
-- Home Assistant automations as described above, replacing the current pin
-  (which forces heat mode) and mirror (which writes regardless of mode).
+- Home Assistant automations as described above.
+- **Firmware pinned in Zigbee2MQTT**: a local index entry at the installed stock
+  version, so no Sonoff update replaces the patch (Zigbee2MQTT takes the first
+  matching entry and offers only a higher version). See AGENTS.md for how a
+  flash works around the pin.
