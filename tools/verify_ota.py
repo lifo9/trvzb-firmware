@@ -1,6 +1,7 @@
 """Verify a built OTA against stock before it is flashed.
 
-Checks that only declared bytes changed, that each patch site differs between
+Checks that the image holds exactly the reviewed site bytes, that only
+declared bytes changed, that each patch site differs between
 the slots only by relocation, that every `bl` in the patch lands on a stock function start
 or inside the patch, and that the MCU version is consistent and raised. Prints
 each patch site's listing in both slots for review. Exits non-zero on any
@@ -34,6 +35,7 @@ from trvzb.patch import SLOT_NAMES, PatchSet  # noqa: E402
 from trvzb.version import McuVersion  # noqa: E402
 from trvzb.verify import (  # noqa: E402
     branch_targets_outside_functions,
+    site_bytes_mismatches,
     site_ranges,
     site_slot_differences,
     slot_bytes,
@@ -100,6 +102,7 @@ def main() -> None:
     allowed = site_ranges(patch_set, version_offsets, len(stock_version_text))
 
     checks = {
+        "image holds the reviewed site bytes": site_bytes_mismatches(built, patch_set),
         "only declared bytes changed": unexpected_changes(stock, built, allowed),
         "site bytes differ between slots only by relocation": site_slot_differences(patch_set),
         "every bl lands on a function start": branch_targets_outside_functions(patch_set, stock_function_starts(stock)),

@@ -46,6 +46,22 @@ def unexpected_changes(stock: OtaFile, built: OtaFile, allowed_slot_ranges: list
     ]
 
 
+def site_bytes_mismatches(built: OtaFile, patch_set: PatchSet) -> list[str]:
+    """Sites whose bytes in the built image differ from the patch set under review.
+
+    Without this, a listing reviewed from the patch set says nothing about the
+    image that would be flashed.
+    """
+    problems = []
+    for site in patch_set.sites:
+        for slot_name in SLOT_NAMES:
+            start = site.offset
+            found = slot_bytes(built, slot_name)[start : start + site.length]
+            if found != site.patched_bytes[slot_name]:
+                problems.append(f"site {site.name} slot {slot_name}: image holds {found.hex()}, patch set says {site.patched_bytes[slot_name].hex()}")
+    return problems
+
+
 def site_slot_differences(patch_set: PatchSet) -> list[str]:
     """Differences between a site's slot A and slot B bytes that relocation does not explain.
 

@@ -14,7 +14,13 @@ from conftest import REPOSITORY_ROOT, SyntheticOta
 from trvzb.ota import OtaFile
 from trvzb.patch import PatchSet, PatchSite
 from trvzb.symbols import load_symbols
-from trvzb.verify import branch_targets_outside_functions, site_slot_differences, unexpected_changes, version_consistency
+from trvzb.verify import (
+    branch_targets_outside_functions,
+    site_bytes_mismatches,
+    site_slot_differences,
+    unexpected_changes,
+    version_consistency,
+)
 
 
 def encode_branch_with_link(address: int, target: int) -> bytes:
@@ -85,4 +91,14 @@ def test_main__passes_an_identity_build(stock_ota_path: Path, tmp_path: Path) ->
         env=environment, capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert result.stdout.count("PASS") == 4
+    assert result.stdout.count("PASS") == 5
+
+
+def test_site_bytes_mismatches__flags_an_image_built_from_a_different_patch(synthetic_ota: SyntheticOta) -> None:
+    stock = {"A": b"1.3.1", "B": b"1.3.1"}
+    reviewed = PatchSet("reviewed", [PatchSite("version", 0x40, stock, {"A": b"1.3.2", "B": b"1.3.2"})])
+    actually_built = PatchSet("built", [PatchSite("version", 0x40, stock, {"A": b"1.3.9", "B": b"1.3.2"})])
+    built = OtaFile(str(synthetic_ota.path))
+    actually_built.apply(built, protected_ranges=[])
+    assert site_bytes_mismatches(built, reviewed)
+    assert not site_bytes_mismatches(built, actually_built)
