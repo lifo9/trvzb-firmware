@@ -28,6 +28,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from trvzb.ota import FILE_VERSION_OFFSET, OtaFile  # noqa: E402
+from trvzb.patch import PatchSet, PatchSite  # noqa: E402
 from trvzb.version import McuVersion  # noqa: E402
 
 
@@ -76,8 +77,22 @@ def main() -> None:
     print("version string occurrences in slot A:", [hex(offset) for offset in occurrences])
     if not occurrences:
         raise SystemExit(f"the image does not contain its version string {current_string!r}")
-    for slot_relative_offset in occurrences:
-        ota.patch_both_slots(slot_relative_offset, current_string, new_string)
+    version_patch = PatchSet(
+        name=f"mcu-version-{new_mcu_version}",
+        sites=[
+            PatchSite(
+                name=f"version_string_{offset:#x}",
+                offset=offset,
+                stock_bytes={"A": current_string, "B": current_string},
+                patched_bytes={"A": new_string, "B": new_string},
+            )
+            for offset in occurrences
+        ],
+    )
+    # The version strings are the one change the update handshake requires, and
+    # one of them sits in the UART dispatcher's literal data, inside a protected
+    # range; so this patch set alone is applied without the protected check.
+    version_patch.apply(ota, protected_ranges=[])
 
     ota.set_file_version(new_file_version)
     ota.set_header_versions(f"{new_file_version:08x}", new_mcu_version.header_field())

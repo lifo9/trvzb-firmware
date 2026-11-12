@@ -52,18 +52,29 @@ class OtaFile:
         slot_index = {"A": 0, "B": 1}[slot_name]
         return self.mcu_payload_start + MCU_PART_TABLE_LENGTH + slot_index * self.slot_length
 
-    def patch_both_slots(self, slot_relative_offset: int, old_bytes: bytes, new_bytes: bytes) -> None:
-        """Apply one same-length patch at the same offset inside both slots."""
+    def check_slot_bytes(self, slot_name: str, slot_relative_offset: int, expected_bytes: bytes) -> None:
+        """Raise unless the slot holds `expected_bytes` at the offset, entirely inside the slot."""
+        if not 0 <= slot_relative_offset <= self.slot_length - len(expected_bytes):
+            raise ValueError(
+                f"patch at {slot_relative_offset:#x} of {len(expected_bytes)} bytes runs outside the {self.slot_length:#x}-byte slot"
+            )
+        start = self.slot_offset(slot_name) + slot_relative_offset
+        found = bytes(self.data[start : start + len(expected_bytes)])
+        if found != expected_bytes:
+            raise ValueError(f"slot {slot_name} at {slot_relative_offset:#x} holds {found!r}, expected {expected_bytes!r}")
+
+    def patch_slot(self, slot_name: str, slot_relative_offset: int, old_bytes: bytes, new_bytes: bytes) -> None:
+        """Replace `old_bytes` with same-length `new_bytes` inside one slot."""
         if len(old_bytes) != len(new_bytes):
             raise ValueError("patches must not change the image length")
-        if not 0 <= slot_relative_offset <= self.slot_length - len(old_bytes):
-            raise ValueError(f"patch at {slot_relative_offset:#x} of {len(old_bytes)} bytes runs outside the {self.slot_length:#x}-byte slot")
+        self.check_slot_bytes(slot_name, slot_relative_offset, old_bytes)
+        start = self.slot_offset(slot_name) + slot_relative_offset
+        self.data[start : start + len(new_bytes)] = new_bytes
+
+    def patch_both_slots(self, slot_relative_offset: int, old_bytes: bytes, new_bytes: bytes) -> None:
+        """Apply one same-length patch at the same offset inside both slots."""
         for slot_name in ("A", "B"):
-            start = self.slot_offset(slot_name) + slot_relative_offset
-            found = bytes(self.data[start : start + len(old_bytes)])
-            if found != old_bytes:
-                raise ValueError(f"slot {slot_name} at {slot_relative_offset:#x} holds {found!r}, expected {old_bytes!r}")
-            self.data[start : start + len(new_bytes)] = new_bytes
+            self.patch_slot(slot_name, slot_relative_offset, old_bytes, new_bytes)
 
     def find_in_slot_a(self, pattern: bytes) -> list[int]:
         """Slot-relative offsets of every match inside slot A."""
