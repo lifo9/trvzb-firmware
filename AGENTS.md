@@ -20,7 +20,9 @@ Guidelines for agents working in this repository.
    hash. Review `just verify <id>`: every check PASS, every site listing read.
 3. Record the hash in the manifest, commit, and tag `release/<id>`.
 4. Flash only with explicit approval for that release. Its MCU version must be
-   above the installed one on the target valve (see `devices.toml`).
+   above the installed one on the target valve (see `devices.toml`). Serve it
+   with the index entry from `just index <id>`, which carries the release hash
+   so Zigbee2MQTT refuses any other file.
 5. Record the flash in `devices.toml` and the outcome in
    [docs/experiments.md](docs/experiments.md).
 

@@ -83,4 +83,5 @@ image is linked at MCU address `0x400`, so MCU address = image offset +
 - `tools/build_patch.py` — assemble a patch set per slot with binutils
 - `tools/build_ota.py` — build an image: patch set plus raised versions
 - `tools/build_release.py` — rebuild a release from its manifest (`just build`)
-- `tools/verify_ota.py` — check a built image against stock (`just verify`)
+- `tools/verify_ota.py` — check a built image against stock and its manifest (`just verify`)
+- `tools/ota_index_entry.py` — Zigbee2MQTT index entry for a verified release (`just index`)

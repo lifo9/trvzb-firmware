@@ -57,3 +57,7 @@ verify release:
         patch_arguments=(--patch-set work/releases/{{release}}.patch.json)
     fi
     python3 -I tools/verify_ota.py work/releases/{{release}}.ota --manifest releases/{{release}}.toml "${patch_arguments[@]}"
+
+# Zigbee2MQTT local OTA index entry for a built, verified release
+index release:
+    python3 -I tools/ota_index_entry.py releases/{{release}}.toml
