@@ -5,7 +5,8 @@ Addresses are image offsets (MCU address = offset + `0x400`).
 ## Thermostat → valve → motor
 
 ```
-thermostat loop 0x6570 (every tick, while runtime +0xc is set)
+thermostat loop 0x6570 (each pass clears runtime +0xc and re-arms its timer
+                         at datapoint 123 × 100 ms)
   └─ decides open / closed by one of three control laws
        └─ 0x648c(open_flag) → target percent
             └─ 0x6d38(percent)            set + report
@@ -71,31 +72,35 @@ counts steps open-loop, and samples motor current/voltage on ADC channels
 voltage (`0x19bc`) against the calibrated thresholds. ADC HAL: `0x11d0`,
 `0x120c`, `0x12ac`.
 
-The exact pin mapping is unresolved: the drive-pattern tables at image
-`0x7748`/`0x7750` are almost all zero, so the motor may be a DC motor with
-brake/enable lines rather than a stepper.
+The motor is a stepper. `0x1aa4` loads its drive patterns through the literals
+`0x7748` and `0x7750`, which are MCU addresses: the tables sit at image
+`0x7348` and `0x7350` and hold the half-step sequence `08 0c 04 06 02 03 01 09`
+and its reverse, one per direction.
 
 ## Knob and buttons
 
-Physical controls: the dial (turn and press) and a configuration key under
-the cover. Button 0 is the dial press, button 1 the configuration key. The
+Physical controls: the knob (turn and press) and a configuration key under
+the cover. Button 0 is the knob press, button 1 the configuration key. The
 vendor manual (User Manual TRVZB EN V1.0) documents these gestures, matching
 the events below:
 
 | Gesture | Effect |
 |---|---|
-| dial press, short | switch auto ↔ manual |
-| dial press, 3 s | child lock on/off (`LC`) |
-| dial press, 3 s while the screen shows `OF` | **pairing mode for 3 minutes** |
-| dial counter-clockwise past the minimum | off mode, `OF` (valve closed, frost protection on) |
+| knob press, short | switch auto ↔ manual |
+| knob press, 3 s | child lock on/off (`LC`) |
+| knob press, 3 s while the screen shows `OF` | **pairing mode for 3 minutes** |
+| knob counter-clockwise past the minimum | off mode, `OF` (valve closed, frost protection on) |
 | configuration key, 3 s | rotate the display 180° |
-| dial press held while inserting batteries | factory reset (`FA`) |
-| dial press, short, after installation | motor travel calibration ("debugging") |
+| knob press held while inserting batteries | factory reset (`FA`) |
+| knob press, short, after installation | motor travel calibration ("debugging") |
 
-Input scanner `0x3e90` reads a bitmask from `0x1688` (bit = channel). Event
-producer `0x3d8c`. The consumer is `0x2e38`–`0x31a6`, the combined
-screen-refresh and key handler, run every tick, dispatching through the jump
-table at `0x3062`:
+Input scanner `0x3e90` reads a bitmask from `0x1688` (bit = channel). The event
+producer `0x3d8c` gates input on the display state: while the screen sleeps
+(`0xdf8`), events 1–6 wake it (`0xdb0`) and are dropped, and events 7–10 are
+dropped without waking. So a first press or detent on a sleeping screen only
+wakes it. Each UI screen calls the producer (six callers); the main screen is
+`0x2e38`–`0x31a6`, the combined screen-refresh and key handler, reached only
+through a pointer table and dispatching through the switch at `0x3064`:
 
 | Event | Source | Meaning | Handler |
 |---|---|---|---|
@@ -118,23 +123,27 @@ Mode numbering: medium-high confidence.
 
 ### The knob path, `0x3104`–`0x31a6`
 
-1. If the screen is asleep (UI `+1` clear), the first detent only wakes it:
-   set the flag and start a 1 s timer (`0x2a14`); the screen stays on 4 s.
-2. Otherwise, at `0x314a`: read the pending value UI `+3` (re-seeded every pass
+1. In auto mode the path returns at once (`0x314a`–`0x314e`): the stock knob
+   does nothing in auto.
+2. Otherwise: read the pending value UI `+3` (re-seeded every pass
    from the setpoint getter `0x636c(0)`), increment for event 5 or decrement
    for event 6, clamp between settings `+0xd` (minimum) and `+0xc` (maximum)
    via `0x7148`, store it back. In heat mode, turning below the minimum calls
    `0x6b54(1)`: off mode, shown as `OF`. In off mode, turning up sets the
    pending value to the minimum and calls `0x6b54(0)`: back to heat.
-3. Commit with `0x6c18(value, 1)`. The second argument marks a local change,
-   which only delays the Zigbee report (2 s / 5 s); the setpoint applies at once.
+3. Commit with `0x6c18(value, 1)`. The second argument marks a local change:
+   the setpoint is stored at once, but the settings save is deferred 2 s
+   (`0x60a4`) and the thermostat re-evaluation 5 s. Applying a change at once
+   takes `0x6b10(1)`, as the datapoint 119 handler does.
 
 ## Display
 
 - Framebuffer 8 bytes at `0x200002c3`, shadow at `+8`; `0xc00` compares and
   copies, `0xb9c` pushes to the panel, `0xd24` lights every segment (test).
-- Renderer `0x32b0(position, character)`; `0x32a8(char_at_0, char_at_2)` draws
-  two characters; `0x3398` draws a value in tenths as two digits.
+- Renderer `0x32b0(position, character)`; `0x32a8(left, right)` draws `left` at
+  position 2 (the tens digit) and `right` at position 0, so child lock is
+  `0x32a8('L', 'C')` and the patch's full-open marker is `0x32a8('F', 'U')`;
+  `0x3398` draws a value in tenths as two digits.
 - **Two 7-segment digits** (positions 0 and 2). No third digit, so 100 cannot
   be shown as a number. A half-step (`.5`) indicator exists as an icon bit.
 - Segment bit map at image `0x7818`: `03 04 05 00 01 02 06` (a b c d e f g).

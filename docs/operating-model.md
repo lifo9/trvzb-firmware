@@ -1,8 +1,8 @@
 # Operating model
 
 How the patched valve is meant to behave inside a Home Assistant heating setup.
-This describes the target once the dial patch is flashed and the Home Assistant
-automations are adapted; the stock firmware's dial still moves the temperature
+This describes the target once the knob patch is flashed and the Home Assistant
+automations are adapted; the stock firmware's knob still moves the temperature
 setpoint.
 
 ## Modes
@@ -14,7 +14,7 @@ internal weekly schedule" to "the Home Assistant thermostat is in charge".
 | Mode | Valve mode (`system_mode`) | Screen | Who sets the opening |
 |---|---|---|---|
 | **Auto** | `auto` | `Auto` icon on | the Home Assistant thermostat |
-| **Manual** | `heat` | `Auto` icon off | the user, at the dial or in Home Assistant; HA stops writing |
+| **Manual** | `heat` | `Auto` icon off | the user, at the knob or in Home Assistant; HA stops writing |
 | **Off** | `off` | `OF` | nobody; the valve is closed |
 
 ## Controls
@@ -22,7 +22,7 @@ internal weekly schedule" to "the Home Assistant thermostat is in charge".
 | Action | Result |
 |---|---|
 | Turn or press while the screen is asleep | wake the screen and show the valve opening; nothing changes |
-| Turn the dial | step the opening ±10 % (0–100, `FU` at 100) **and switch to manual** |
+| Turn the knob | step the opening ±10 % (0–100, `FU` at 100) **and switch to manual** |
 | Set the opening in Home Assistant (slider) | the valve moves; **switch to manual** |
 | Short press, screen awake, in manual | **back to auto**: the thermostat's value is applied at once |
 | Short press, screen awake, in auto | show the valve opening only |
@@ -30,8 +30,8 @@ internal weekly schedule" to "the Home Assistant thermostat is in charge".
 | Turn clockwise from `OF` | **on, in auto**: Home Assistant thermostat on, its value applied |
 | Switch the HA thermostat off / on | valve to off / to auto |
 | Manual left alone | **falls back to auto at the room's next scheduled change** in Home Assistant |
-| Dial press, 3 s | child lock on/off (`LC`), stock |
-| Dial press, 3 s while showing `OF` | pairing mode for 3 minutes, stock (kept: the documented way to re-pair) |
+| Knob press, 3 s | child lock on/off (`LC`), stock |
+| Knob press, 3 s while showing `OF` | pairing mode for 3 minutes, stock (kept: the documented way to re-pair) |
 | Configuration key under the cover, 3 s | rotate the display 180°, stock |
 
 ## The setup it assumes
@@ -77,8 +77,8 @@ every weekly schedule slot at 35 °C.
   change, or heating being switched off and on — never silently replaced by a recomputed
   thermostat value.
 - **Heating off means closed.** In off mode the valve's own thermostat holds it
-  closed; turning the dial up from `OF` switches heating back on in auto.
-- **The dial works without Home Assistant**, including manual, off and on. When
+  closed; turning the knob up from `OF` switches heating back on in auto.
+- **The knob works without Home Assistant**, including manual, off and on. When
   the system returns, Home Assistant adopts the valve's mode, since the state
   lives in the valve.
 
@@ -87,20 +87,22 @@ every weekly schedule slot at 35 °C.
 What the firmware must do differently from stock:
 
 1. A detent on an awake screen steps `valve_opening_degree` ±10 % instead of the
-   setpoint, applies and reports it, and sets the mode to heat (manual).
+   setpoint, applies and reports it, and sets the mode to heat (manual). This
+   includes auto mode, where the stock knob path returns at once, so auto
+   needs a new path rather than a changed one.
 2. Below `0`, switch to off (stock already turns below the minimum into off).
 3. Up from off, switch to auto (stock switches to heat).
 4. A short press on an awake screen switches manual → auto, and does nothing in
    auto (stock toggles both ways).
-5. A first detent or press on a sleeping screen only wakes it (the first detent
-   already does in stock; the press needs verifying).
+5. A first detent or press on a sleeping screen only wakes it — already true in
+   stock: the event producer drops inputs that wake the screen. No patch needed.
 6. The woken screen shows the valve opening: `0`–`90`, `FU` at 100.
 
 Unchanged: the child lock gesture, the pairing gesture in `OF`, screen rotation.
 
 ## Setup requirements outside the firmware
 
-- **Child lock off.** The reference device has it on; a 3 s dial press toggles it.
+- **Child lock off.** The reference device has it on; a 3 s knob press toggles it.
 - **Weekly schedule at 35 °C in every slot**, so auto mode stays pinned open.
 - Home Assistant automations as described above, replacing the current pin
   (which forces heat mode) and mirror (which writes regardless of mode).

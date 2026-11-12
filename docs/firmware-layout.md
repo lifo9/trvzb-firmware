@@ -89,11 +89,15 @@ VTOR at it (`0x1cb4`), so the slots are self-contained.
 
 ### Startup data
 
-The data-init table at image `0x7900` copies a 276-byte blob from image
-`0x7a08` to RAM `0x20000100`: the flash erase and program routines, plus two
-small interrupt handlers that must keep running while flash is busy (which is
-why two vector entries point into RAM, `0x200001a1` and `0x200001b5`). `.bss`
-starts at `0x20000458`, `0xb80` bytes, ending at the stack pointer.
+The data-init table at image `0x7908` has four entries (source, destination,
+length, routine; sources are MCU addresses):
+
+| Source (image) | Destination | Length | Content |
+|---|---|---|---|
+| `0x7948` | `0x20000000` | `0xc0` | zero block where the RAM vector table goes |
+| `0x7a08` | `0x20000100` | `0x114` | flash erase and program routines, plus two interrupt handlers that must keep running while flash is busy (hence vector entries `0x200001a1` and `0x200001b5`) |
+| `0x7b1c` | `0x20000280` | `0x1d8` | compressed `.data`, holding one flash pointer |
+| — | `0x20000458` | `0xb80` | `.bss`, zero-filled, ending at the stack pointer |
 
 ### Key RAM structures
 

@@ -33,19 +33,19 @@ list.
 | 114, 115, 116 | value | opening-limit, closing-limit, motor-running voltages (**report only**) | — | medium-high |
 | 117 | — | does not exist (absent from the type table) | — | high |
 | 118 | bitmap | 7-bit per-day schedule enable mask | `0x5150` | medium |
-| **119** | value | **valve opening degree**, 0–100 | settings `+0x15` | **high** |
+| **119** | value | **valve opening degree**, 0–100; the handler stores the byte unchecked (`0x5178`) | settings `+0x15` | **high** |
 | **120** | value | **valve closing degree**, 0–100 | settings `+0x16` | **high** |
 | 121 | bool | open-window detection | `0x5192` → `0x6be8` | medium-high |
-| 122 | value | external temperature input, −299..1000 in 0.1 °C | `0x6eb8` | high |
+| 122 | value | external temperature input, −299..999 in 0.1 °C | `0x6eb8` | high |
 | 123 | value | duration, 1..600 in 100 ms units | settings `+0x18`/`+0x19` | medium |
 | 124 | value | 1..10 | settings `+0xb` | low |
 | 125 | value | heating-on hysteresis threshold, stored as `50 − v`; likely `temperature_accuracy` | settings `+7` | high (role) / medium (attribute) |
 | 126 | value | heating-off hysteresis threshold, stored as `v − 50` | settings `+0x17` | high |
 | 127 | enum | screen direction, 0 or 2; the same field the configuration key's 3 s press toggles | settings `+0xa` | high |
 | 128, 130 | raw | schedule / time payloads | `0x6cb8`, `0x6d70` | low-medium |
-| 131 | raw | unresolved: the command jump table sends it to the default branch, yet a second analysis pass linked it to `0x3e64`, possibly through the report path | — | low |
-| 129 | enum | — | `0x646c` | low |
-| 132 | enum | — | settings `+0x12` | low |
+| 131 | raw | report only: a 2-byte value from `0x3e64` (report table at `0x5b5c`, case 19) | — | high |
+| 129 | enum | report only, from `0x646c` | — | medium |
+| 132 | enum | control-law selector: 1 selects the hysteresis law in the thermostat loop | settings `+0x12` | medium |
 
 Datapoints 112–116 are discarded by the command dispatcher, so the matching
 Zigbee attributes (`0x6003`–`0x6007`) are effectively read-only even though
@@ -58,11 +58,15 @@ target percentage is `0x648c`, which takes a binary open/closed decision made
 by the thermostat (see [control-flow.md](control-flow.md)). This is the gap
 reported in Koenkk/zigbee2mqtt#33543.
 
-## GCC jump tables
+## Switch tables
 
-`bl 0xb20` is a bounds-checked byte switch helper. At the return address: one
-byte holding the limit, then the table. Index = `r3`, clamped to the limit (the
-last entry is the default). Target = table start + 2 × entry.
+`bl 0xb20` calls ARM Compiler's `__ARM_common_switch8`. At the return address:
+one byte holding the limit, then the table. Index = `r3`, clamped to the limit
+(the last entry is the default). Target = return address + 2 × entry.
+Datapoints 124–132 reach their handlers through one-instruction trampolines at
+`0x51b8`–`0x51c4`; the targets listed below are the final ones. The report
+builder has three more tables, at `0x5b2a`, `0x5b46` and `0x5b5c`; the last
+indexes from datapoint 112.
 
 | Call | Index | Decoded |
 |---|---|---|
