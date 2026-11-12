@@ -169,3 +169,22 @@ def test_protected_function_range__covers_the_whole_function(firmware: FirmwareM
 def test_regions__never_overlap_protected_ranges(symbols: Symbols) -> None:
     for region in symbols.regions.values():
         assert not any(protected.overlaps(region.start, region.end - region.start) for protected in symbols.protected_ranges), region.name
+
+
+def test_display_value_call__draws_the_pending_value(call_targets_by_site: dict[int, int], image: bytes, symbols: Symbols) -> None:
+    call_site = symbols.offset("ui_main_screen.display_value_call")
+    ldrb_r0_from_r5_plus_3 = bytes.fromhex("e878")
+    assert image[call_site : call_site + 2] == ldrb_r0_from_r5_plus_3
+    assert call_targets_by_site[call_site + 2] == symbols.offset("draw_setpoint")
+
+
+def test_time_synced_set__writes_the_runtime_flag(firmware: FirmwareMap, symbols: Symbols) -> None:
+    runtime_address, time_synced_field = symbols.field_address("runtime.time_synced")
+    _, writers = firmware.field_accesses(runtime_address)
+    assert symbols.offset("time_synced_set") in writers[time_synced_field]
+
+
+def test_display_is_awake__reads_the_display_state(firmware: FirmwareMap, symbols: Symbols) -> None:
+    display_state_address, awake_field = symbols.field_address("display_state.awake")
+    readers, _ = firmware.field_accesses(display_state_address)
+    assert symbols.offset("display_is_awake") in readers[awake_field]

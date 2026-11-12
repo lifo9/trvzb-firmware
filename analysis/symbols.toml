@@ -205,7 +205,59 @@ offset = 0x7148
 confidence = "high"
 summary = "(value, minimum, maximum, wrap): returns minimum below and maximum above, or the opposite end when wrap is set; signed compare"
 
+[[function]]
+name = "draw_setpoint"
+offset = 0x340c
+confidence = "high"
+summary = "(value): draws a setpoint-format value into the framebuffer; the main screen's display call"
+
+[[function]]
+name = "keep_awake"
+offset = 0x399c
+confidence = "medium"
+summary = "(milliseconds): keeps the screen awake for that long"
+
+[[function]]
+name = "report_queue"
+offset = 0x4bb8
+confidence = "medium"
+summary = "(flags_low, flags_high): queues datapoint reports by flag bit"
+
+[[function]]
+name = "settings_save_deferred"
+offset = 0x60a4
+confidence = "high"
+summary = "(milliseconds): schedules the settings save after a delay"
+
+[[function]]
+name = "setpoint_get"
+offset = 0x636c
+confidence = "medium"
+summary = "(which): the current setpoint; reseeds the knob's pending value"
+
+[[function]]
+name = "time_synced_set"
+offset = 0x6ae0
+confidence = "high"
+summary = "(value): writes runtime.time_synced"
+
+
 # --- Code locations inside functions ------------------------------------------
+
+[[label]]
+name = "ui_main_screen.display_value_call"
+offset = 0x2fdc
+summary = "ldrb r0, [r5, #3]; bl draw_setpoint: what the woken screen shows"
+
+[[label]]
+name = "ui_main_screen.short_press"
+offset = 0x30dc
+summary = "Event 1: stock toggles heat and auto"
+
+[[label]]
+name = "ui_main_screen.knob_branch"
+offset = 0x3104
+summary = "Events 5 and 6 enter here"
 
 [[label]]
 name = "ui_main_screen.event_switch"
@@ -237,7 +289,7 @@ fields = { screen_direction = 0x0a, maximum_setpoint = 0x0c, minimum_setpoint = 
 [[ram]]
 name = "runtime"
 address = 0x20000348
-fields = { operating_state = 0x04, thermostat_loop_enabled = 0x0c }
+fields = { operating_state = 0x04, thermostat_loop_enabled = 0x0c, time_synced = 0x12 }
 
 [[ram]]
 name = "valve"
@@ -248,6 +300,11 @@ fields = { target_percent = 0x06, current_percent = 0x07, travel_steps = 0x34 }
 name = "ui_edit"
 address = 0x2000043e
 fields = { pending_value = 0x03, alternate_screen = 0x04 }
+
+[[ram]]
+name = "display_state"
+address = 0x200002f8
+fields = { awake = 0x00 }
 
 [[ram]]
 name = "framebuffer"
