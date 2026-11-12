@@ -29,11 +29,15 @@ Guidelines for agents working in this repository.
    above the installed one on the target valve (see `devices.toml`). First load
    `tools/zigbee2mqtt/abort-ota-end.mjs`, with the valve's IEEE address and the
    release's file version filled in, through Zigbee2MQTT's
-   `bridge/request/extension/save`. Then serve the image with the index entry
-   from `just index <id>`, which carries the release hash so Zigbee2MQTT
-   refuses any other file, and start `ota_update/update`.
-5. After the `UpgradeEndRequest` has been aborted, remove the extension, empty
-   the local index (`[]`) and delete the image from Zigbee2MQTT's `ota/`
+   `bridge/request/extension/save`. Then serve the image by replacing the
+   local index with only the entry from `just index <id>`, which carries the
+   release hash so Zigbee2MQTT refuses any other file, and start
+   `ota_update/update`. Replace, do not append: the deployment pins the
+   installed stock version with an index entry of its own, and Zigbee2MQTT
+   uses the first matching entry, so the pin would hide the release.
+5. After the `UpgradeEndRequest` has been aborted, remove the extension,
+   restore the pinned index (the next deployment of the Home Assistant stack
+   writes it back too) and delete the image from Zigbee2MQTT's `ota/`
    directory: a later "update" click would otherwise flash it again, this time
    without the abort.
 6. Record the flash in `devices.toml` and the outcome in
