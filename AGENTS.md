@@ -26,10 +26,17 @@ Guidelines for agents working in this repository.
    hash. Review `just verify <id>`: every check PASS, every site listing read.
 3. Record the hash in the manifest, commit, and tag `release/<id>`.
 4. Flash only with explicit approval for that release. Its MCU version must be
-   above the installed one on the target valve (see `devices.toml`). Serve it
-   with the index entry from `just index <id>`, which carries the release hash
-   so Zigbee2MQTT refuses any other file.
-5. Record the flash in `devices.toml` and the outcome in
+   above the installed one on the target valve (see `devices.toml`). First load
+   `tools/zigbee2mqtt/abort-ota-end.mjs`, with the valve's IEEE address and the
+   release's file version filled in, through Zigbee2MQTT's
+   `bridge/request/extension/save`. Then serve the image with the index entry
+   from `just index <id>`, which carries the release hash so Zigbee2MQTT
+   refuses any other file, and start `ota_update/update`.
+5. After the `UpgradeEndRequest` has been aborted, remove the extension, empty
+   the local index (`[]`) and delete the image from Zigbee2MQTT's `ota/`
+   directory: a later "update" click would otherwise flash it again, this time
+   without the abort.
+6. Record the flash in `devices.toml` and the outcome in
    [docs/experiments.md](docs/experiments.md).
 
 ## Firmware files
