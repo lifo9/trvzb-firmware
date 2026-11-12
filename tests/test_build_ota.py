@@ -95,13 +95,22 @@ def test_set_header_versions__raises_on_wrong_length(synthetic_ota: SyntheticOta
         ota.set_header_versions("1405", "00001302")
 
 
-def run_build_ota(stock_path: Path, output_path: Path) -> subprocess.CompletedProcess[str]:
+def run_build_ota(
+    stock_path: Path,
+    output_path: Path,
+    mcu_version: str = "1.3.2",
+    file_version: str = "0x1405",
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-I", str(REPOSITORY_ROOT / "tools" / "build_ota.py"), str(output_path)],
+        [
+            sys.executable, "-I", str(REPOSITORY_ROOT / "tools" / "build_ota.py"), str(output_path),
+            "--mcu-version", mcu_version, "--file-version", file_version,
+        ],
         env={**os.environ, "TRVZB_OTA": str(stock_path)},
         capture_output=True,
         text=True,
-        check=True,
+        check=check,
     )
 
 
@@ -122,3 +131,34 @@ def test_main__reproduces_experiment_1_image_from_stock(stock_ota_path: Path, tm
     output_path = tmp_path / "trvzb_v1.4.5-verstest.ota"
     run_build_ota(stock_ota_path, output_path)
     assert hashlib.sha512(output_path.read_bytes()).hexdigest() == EXPERIMENT_1_SHA512
+
+
+def test_main__refuses_mcu_version_not_above_current(synthetic_ota: SyntheticOta, tmp_path: Path) -> None:
+    result = run_build_ota(synthetic_ota.path, tmp_path / "out.ota", mcu_version="1.3.1", check=False)
+    assert result.returncode != 0
+    assert "not above" in result.stderr
+    assert not (tmp_path / "out.ota").exists()
+
+
+def test_main__refuses_mcu_version_that_would_wrap(synthetic_ota: SyntheticOta, tmp_path: Path) -> None:
+    result = run_build_ota(synthetic_ota.path, tmp_path / "out.ota", mcu_version="1.4.0", check=False)
+    assert result.returncode != 0
+    assert "does not fit" in result.stderr
+
+
+def test_main__refuses_mcu_version_of_different_length(synthetic_ota: SyntheticOta, tmp_path: Path) -> None:
+    result = run_build_ota(synthetic_ota.path, tmp_path / "out.ota", mcu_version="2.0.10", check=False)
+    assert result.returncode != 0
+    assert "fixed-size" in result.stderr
+
+
+def test_main__refuses_file_version_not_above_current(synthetic_ota: SyntheticOta, tmp_path: Path) -> None:
+    result = run_build_ota(synthetic_ota.path, tmp_path / "out.ota", file_version="0x1404", check=False)
+    assert result.returncode != 0
+    assert "Zigbee2MQTT would not offer it" in result.stderr
+
+
+def test_main__derives_header_versions_from_arguments(synthetic_ota: SyntheticOta, tmp_path: Path) -> None:
+    output_path = tmp_path / "out.ota"
+    run_build_ota(synthetic_ota.path, output_path, mcu_version="2.0.0", file_version="0x1406")
+    assert OtaFile(str(output_path)).header_versions() == ("00001406", "00002000")

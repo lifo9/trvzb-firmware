@@ -76,6 +76,13 @@ class OtaFile:
         assert len(replacement) == match.end(), "replacement header string changes length"
         self.data[HEADER_STRING_OFFSET : HEADER_STRING_OFFSET + len(replacement)] = replacement
 
+    def header_versions(self) -> tuple[str, str]:
+        """The Zigbee and MCU version fields of the header string, e.g. ('00001404', '00001301')."""
+        header_string = bytes(self.data[HEADER_STRING_OFFSET : HEADER_STRING_OFFSET + HEADER_STRING_LENGTH])
+        match = re.match(rb"vers:(\d{8}),(\d{8})\n", header_string)
+        assert match is not None, f"unexpected header string {header_string!r}"
+        return match.group(1).decode(), match.group(2).decode()
+
     def mcu_header_string(self) -> bytes:
         return bytes(self.data[HEADER_STRING_OFFSET : HEADER_STRING_OFFSET + HEADER_STRING_LENGTH]).rstrip(b"\x00")
 
