@@ -1,0 +1,8 @@
+# Experiment 1: stock code with raised versions only, to test whether the
+# valve accepts a self-supplied image (see docs/experiments.md).
+
+id = "1.4.5-verstest"
+stock_sha512 = "c7640e2a238ab9807b77d36abc4b9e58d64c99a8fe8ac8d6246f48760bc85a2aec5c446630c94dd2e85fe3fe088011eccc992e543183b74ede7e061ae6f324b3"
+mcu_version = "1.3.2"
+file_version = 0x1405
+sha512 = "cc146b65c5056c0aefc009a282b70ff4dc297424431be420043af8a398384396024b1a5c761aa66e7e7041230d18f06c39ff288cb36d538ee1a1e03499820f56"

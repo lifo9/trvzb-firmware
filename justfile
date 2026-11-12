@@ -43,3 +43,17 @@ calls +addresses:
 # Run the test suite (the golden-hash test needs `just fetch` first)
 test:
     python3 -I -m pytest -q -p no:cacheprovider tests
+
+# Build a release from releases/<id>.toml and check it reproduces the recorded hash
+build release: fetch
+    python3 -I tools/build_release.py releases/{{release}}.toml
+
+# Verify a built release against stock: changed bytes, slot relocation, calls, versions
+verify release:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    patch_arguments=()
+    if [ -f work/releases/{{release}}.patch.json ]; then
+        patch_arguments=(--patch-set work/releases/{{release}}.patch.json)
+    fi
+    python3 -I tools/verify_ota.py work/releases/{{release}}.ota "${patch_arguments[@]}"

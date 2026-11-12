@@ -1,0 +1,14 @@
+# Every flashed valve and every flash, oldest first. The application MCU only
+# accepts a strictly higher version and has about 64 updates in its life (see
+# docs/update-and-recovery.md), so this log is the record of both. A release's
+# MCU version must be above the installed one on every valve it goes to.
+
+[[device]]
+label = "valve-1"
+
+[[device.flash]]
+release = "1.4.5-verstest"
+date = 2026-11-12
+installed_file_version = 5125
+mcu_version = "1.3.2"
+mcu_version_evidence = "indirect: the motor calibration values changed after the update"
