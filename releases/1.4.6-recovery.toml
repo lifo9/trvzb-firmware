@@ -1,0 +1,9 @@
+# Recovery: Sonoff's stock 1.4.4 content, untouched, with only the file
+# version raised so Zigbee2MQTT offers it. Gives a valve stuck repeating the
+# end of an update a complete, consistent one to finish. The MCU payload and
+# its version (1.3.1) stay exactly stock.
+
+id = "1.4.6-recovery"
+stock_sha512 = "c7640e2a238ab9807b77d36abc4b9e58d64c99a8fe8ac8d6246f48760bc85a2aec5c446630c94dd2e85fe3fe088011eccc992e543183b74ede7e061ae6f324b3"
+file_version = 0x1406
+sha512 = "af89e9d7d126bf29ea7535021aa1ee71758bc8ec94113aea0311f6a81ca40bfef1c1c5cf011eb2346e40c456b68d340dcb743b9eb619f298ec7afca25905c94e"

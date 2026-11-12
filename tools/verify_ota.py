@@ -73,6 +73,7 @@ def main() -> None:
     allowed = site_ranges(patch_set, version_offsets, len(stock_version_text))
 
     function_starts, instruction_starts = stock_code_map(stock)
+    is_recovery = arguments.manifest is not None and load_manifest(arguments.manifest).mcu_version is None
     # Checks that cannot run yet, such as the release hash of a release under
     # review; shown, but not failures.
     pending: dict[str, str] = {}
@@ -84,7 +85,9 @@ def main() -> None:
         "every bl lands on a function start": branch_targets_outside_functions(patch_set, function_starts),
         "image calls overlapping a site land on a function start": image_calls_overlapping_sites(built, patch_set, function_starts),
         "branches leaving a site land on a stock instruction": branches_leaving_sites(built, patch_set, instruction_starts),
-        "MCU version consistent and raised": version_consistency(stock, built, version_offsets),
+        "MCU version consistent and raised"
+        if not is_recovery
+        else "MCU version unchanged from stock": version_consistency(stock, built, version_offsets, expect_raised=not is_recovery),
     }
     if arguments.manifest:
         manifest = load_manifest(arguments.manifest)

@@ -2,7 +2,8 @@
 
 A manifest in releases/<id>.toml pins the stock image (`stock_sha512`), the
 MCU and file versions, an optional `patch_set` directory, and the SHA-512 of
-the resulting image. The build refuses a different stock image, and fails if
+the resulting image. Without `mcu_version` (and without a patch set) it is a
+recovery release: stock content with only the file version raised. The build refuses a different stock image, and fails if
 the result does not match the recorded hash; a manifest without `sha512` is a
 release in preparation, whose hash is printed for review.
 
@@ -30,7 +31,7 @@ sys.path.insert(0, str(REPOSITORY_ROOT))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from build_patch import build_patch_set  # noqa: E402
-from trvzb.build import BuildRefused, build_image  # noqa: E402
+from trvzb.build import BuildRefused, build_image, build_recovery_image  # noqa: E402
 from trvzb.ota import STOCK_OTA_PATH, OtaFile  # noqa: E402
 from trvzb.symbols import load_symbols  # noqa: E402
 
@@ -41,7 +42,7 @@ RELEASE_OUTPUT_DIRECTORY = Path("work/releases")
 class ReleaseManifest:
     release_id: str
     stock_sha512: str
-    mcu_version: str
+    mcu_version: str | None
     file_version: int
     patch_set_directory: Path | None
     sha512: str | None
@@ -56,7 +57,7 @@ def load_manifest(path: Path) -> ReleaseManifest:
     return ReleaseManifest(
         release_id=document["id"],
         stock_sha512=document["stock_sha512"],
-        mcu_version=document["mcu_version"],
+        mcu_version=document.get("mcu_version"),
         file_version=document["file_version"],
         patch_set_directory=REPOSITORY_ROOT / patch_set if patch_set else None,
         sha512=document.get("sha512"),
@@ -73,7 +74,12 @@ def build_release(manifest: ReleaseManifest, stock_path: str, output_directory: 
     logic_patch = None
     if manifest.patch_set_directory is not None:
         logic_patch = build_patch_set(manifest.patch_set_directory, OtaFile(stock_path), symbols)
-    image = build_image(OtaFile(stock_path), manifest.mcu_version, manifest.file_version, logic_patch, symbols.protected_ranges)
+    if manifest.mcu_version is None:
+        if logic_patch is not None:
+            raise BuildRefused(f"release {manifest.release_id} has a patch set but no mcu_version to raise")
+        image = build_recovery_image(OtaFile(stock_path), manifest.file_version)
+    else:
+        image = build_image(OtaFile(stock_path), manifest.mcu_version, manifest.file_version, logic_patch, symbols.protected_ranges)
     output_path = output_directory / f"{manifest.release_id}.ota"
     # Written under a temporary name and renamed only once it matches, so a
     # mismatched build never sits where `just verify` and flashing look.

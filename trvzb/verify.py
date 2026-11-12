@@ -186,15 +186,22 @@ def branch_targets_outside_functions(
     return problems
 
 
-def version_consistency(stock: OtaFile, built: OtaFile, version_string_offsets: list[int]) -> list[str]:
-    """The header's MCU version must match the strings in both slots and pack above stock's."""
+def version_consistency(
+    stock: OtaFile, built: OtaFile, version_string_offsets: list[int], expect_raised: bool = True
+) -> list[str]:
+    """The header's MCU version must match the strings in both slots and pack above stock's.
+
+    A recovery image (`expect_raised` false) must instead keep stock's MCU version.
+    """
     _, built_field = built.header_versions()
     _, stock_field = stock.header_versions()
     built_version = McuVersion.from_header_field(built_field)
     stock_version = McuVersion.from_header_field(stock_field)
     problems = []
-    if built_version.packed() <= stock_version.packed():
+    if expect_raised and built_version.packed() <= stock_version.packed():
         problems.append(f"MCU version {built_version} does not pack above stock {stock_version}")
+    if not expect_raised and built_version != stock_version:
+        problems.append(f"recovery image changes the MCU version from {stock_version} to {built_version}")
     expected = str(built_version).encode()
     for slot_name in SLOT_NAMES:
         slot = slot_bytes(built, slot_name)

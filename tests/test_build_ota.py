@@ -197,3 +197,18 @@ def test_main__refuses_a_file_version_the_header_cannot_spell(synthetic_ota: Syn
     result = run_build_ota(synthetic_ota.path, tmp_path / "out.ota", file_version="0x140a", check=False)
     assert result.returncode != 0
     assert "decimal digits" in result.stderr
+
+
+def test_build_recovery_image__raises_only_the_file_version(synthetic_ota: SyntheticOta) -> None:
+    from trvzb.build import build_recovery_image
+
+    ota = build_recovery_image(OtaFile(str(synthetic_ota.path)), 0x1406)
+    assert ota.header_versions() == ("00001406", "00001301")
+    assert changed_offsets(synthetic_ota.data, bytes(ota.data)) == [0x0E, 0x20]
+
+
+def test_build_recovery_image__refuses_a_file_version_not_above_current(synthetic_ota: SyntheticOta) -> None:
+    from trvzb.build import BuildRefused, build_recovery_image
+
+    with pytest.raises(BuildRefused, match="not above"):
+        build_recovery_image(OtaFile(str(synthetic_ota.path)), 0x1404)
