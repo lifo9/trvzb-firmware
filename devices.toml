@@ -15,3 +15,10 @@ date = 2026-11-12
 installed_file_version = 5125
 mcu_version = "1.3.2"
 mcu_version_evidence = "offered; installation unknown: the MCU restarts on both transfer success and failure"
+
+[[device.flash]]
+release = "1.4.7-canary"
+date = 2026-11-12
+installed_file_version = 5124
+mcu_version = "1.3.3"
+mcu_version_evidence = "accepted: the child-lock screen shows 8C; the SoC was not re-installed (ABORT won the race), so it still runs 5124"

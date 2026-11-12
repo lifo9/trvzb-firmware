@@ -139,3 +139,50 @@ equals its running one.
 Settings lost to the factory reset were written back from the snapshot taken
 before it; the motor calibration values (idle and closing steps, limit
 voltages) were re-measured by the device itself.
+
+## 2. Letter-L canary (1.4.7 / MCU 1.3.3)
+
+**Question:** does the application MCU accept and run a modified image
+delivered by OTA on the stock 1.4.4 SoC firmware?
+
+**Image:** release `1.4.7-canary` (tag `release/1.4.7-canary`): stock 1.4.4
+with the MCU version raised to 1.3.3, file version `0x1407`, and patch set
+`patches/canary-letter-l`, which draws the letter L with every segment lit.
+No code byte changed; 11 bytes differ from stock in total. SHA-512:
+
+```
+310cbcd53861b692b0a2ce2b1a3d41ffa957971ad4b0efaf943b2b2b13a1987b
+5246a09cdfa2ca6eff6ba391da781f05de88156134c9a3c399d5803a4a7471e3
+```
+
+**Delivery:** local index entry from `just index 1.4.7-canary`, with the ABORT
+extension (`abort-stale-ota-end.mjs`, armed for file version `0x1407`) loaded
+first. `ota_update/update` at 19:11:04 local time on 2026-11-12.
+
+**Device before:** battery 61 %, mode heat, setpoint 35 °C, child lock off.
+
+**Timeline:** last image block 19:45:40; 11.5 minutes of silence while the
+SoC fed the MCU; reboot and rejoin 19:57:19; `UpgradeEndRequest` for 5127 at
+19:59:40, answered by the extension's ABORT in the same second and by
+zigbee-herdsman's own `upgradeEndResponse`. No reboot followed, so the ABORT
+won and the SoC did not re-install; zigbee-herdsman gave up waiting for the
+announce and logged "updated from 5124 to 5127", which only echoes the header.
+No further request or rejoin came.
+
+**Outcome: accepted.** Holding the knob for child lock shows `8C` instead of
+`LC`. So the application MCU accepts a modified payload: the SoC computes the
+notified checksum from the stored bytes, and the version gate passed (1.3.3
+over whatever experiment 1 left). Delivery on the stock SoC firmware works
+with the ABORT extension in place.
+
+**Device after:** settings kept (mode heat, setpoint 35 °C, frost protection
+7 °C). The MCU re-ran its travel calibration after restarting, with clearly
+different results: closing steps 631 (340 after the factory reset), idle steps
+20 (314), opening and closing limit voltages 2928 and 3131 mV (2060 and 2946).
+The code is stock, so this is a physical re-measurement; watch whether the
+valve still regulates normally.
+
+`0xfc11`/`0x0011` read empty from the reboot until at least 20:01 (it held
+`01 02 13 02` long after the previous boot), so the SoC fills it some time
+after booting. That points to a live readout from the MCU; the value should
+become `01 02 13 03`.
