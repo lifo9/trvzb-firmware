@@ -20,7 +20,10 @@
       {
         devShells.default = pkgs.mkShell {
           packages = [
-            (pkgs.python3.withPackages (pythonPackages: [ pythonPackages.capstone ]))
+            (pkgs.python3.withPackages (pythonPackages: [
+              pythonPackages.capstone
+              pythonPackages.pytest
+            ]))
             pkgs.just
             pkgs.kubectl
           ];
