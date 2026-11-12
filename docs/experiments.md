@@ -57,3 +57,28 @@ The knob patch's visible behaviour will be the first real observable.
 settings `+5`. Candidate: Zigbee2MQTT's generic `read` converter on `genBasic`
 and the manufacturer cluster `0xfc11`, looking for an attribute that carries
 either.
+
+**Aftermath: an update retry loop (found the same day).** From the moment the
+update installed (14:34) valve-1 rejoined the network every 1–5 minutes; no
+other device rejoined, and it had not rejoined once in the 14 hours before.
+Each rejoin wakes the screen (the network-status handler `0x5688` calls
+`display_wake`) and the battery fell about 2 % an hour.
+
+A debug capture shows the cycle: the valve sends `UpgradeEndRequest` for 5125
+with status success, about 13 s later it reboots and rejoins, then after one
+to five minutes asks again. Its ZCL transaction number is 14 every time, so
+each cycle is a full reboot. Zigbee2MQTT had no update session left to answer
+in. Pulling the batteries did not stop it, so the state is in flash.
+
+A temporary Zigbee2MQTT extension then answered three requests with exactly
+the `upgradeEndResponse` zigbee-herdsman sends (`currentTime` 0,
+`upgradeTime` 1, the request's transaction number). The valve rebooted ~13 s
+after each answer and asked again, as before. So the loop is not a missing
+answer: the Zigbee SoC keeps re-running the install, and the application-MCU
+half keeps failing. With the version gate passing (1.3.2 packs above 1.3.1),
+the likeliest failure is the transfer checksum: **the SoC appears to carry a
+precomputed sum, so a modified MCU payload never passes.** Not yet proven.
+
+While looping the valve ignores Zigbee2MQTT's update offers ("device didn't
+respond"). Recovery attempt: release `1.4.6-recovery` (stock content, file
+version 5126) is scheduled to start on the valve's own next image query.
