@@ -1,0 +1,325 @@
+# Named locations in the stock 1.4.4 application-MCU image (MCU firmware
+# 1.3.1), as image offsets into slot A. RAM addresses are absolute.
+#
+# Scope: what the knob patch reads, calls, replaces or must not touch. Facts the
+# patch depends on are checked against the binary in tests/test_facts.py;
+# confidence states how well the *meaning* is established, not the address.
+
+# --- Functions ----------------------------------------------------------------
+
+[[function]]
+name = "reset_handler"
+offset = 0xd8
+confidence = "high"
+summary = "Reset vector target"
+
+[[function]]
+name = "switch8"
+offset = 0xb20
+confidence = "high"
+summary = "ARM Compiler __ARM_common_switch8: byte switch table follows each bl"
+
+[[function]]
+name = "flash_program_trampoline"
+offset = 0x348
+confidence = "high"
+summary = "(destination, source, length): calls the RAM-resident flash program routine"
+
+[[function]]
+name = "flash_erase_trampoline"
+offset = 0x354
+confidence = "high"
+summary = "(address): calls the RAM-resident 512-byte page erase routine"
+
+[[function]]
+name = "display_wake"
+offset = 0xdb0
+confidence = "medium"
+summary = "Wakes the display; called by the event producer when an input arrives on a sleeping screen"
+
+[[function]]
+name = "display_is_awake"
+offset = 0xdf8
+confidence = "medium"
+summary = "Display-awake getter; the event producer drops inputs while asleep"
+
+[[function]]
+name = "motor_tick"
+offset = 0x1aa4
+confidence = "high"
+summary = "Stepper commutation state machine; counts steps, samples motor current"
+
+[[function]]
+name = "motor_move"
+offset = 0x1c7c
+confidence = "high"
+summary = "(direction 1 close | 2 open, steps)"
+
+[[function]]
+name = "ui_main_screen"
+offset = 0x2e38
+confidence = "high"
+summary = "Main screen refresh and input handler; holds the knob path"
+
+[[function]]
+name = "draw_two_characters"
+offset = 0x32a8
+confidence = "high"
+summary = "(left, right): left at digit position 2, right at position 0"
+
+[[function]]
+name = "draw_character"
+offset = 0x32b0
+confidence = "high"
+summary = "(position, character)"
+
+[[function]]
+name = "draw_value_tenths"
+offset = 0x3398
+confidence = "medium"
+summary = "Draws a value in tenths as two digits"
+
+[[function]]
+name = "input_event_producer"
+offset = 0x3d8c
+confidence = "high"
+summary = "Turns raw inputs into events 1-10; called once per UI screen"
+
+[[function]]
+name = "valve_set_target_percent"
+offset = 0x4a64
+confidence = "high"
+summary = "(percent): set the valve target and kick the valve task"
+
+[[function]]
+name = "valve_apply_target"
+offset = 0x4ac0
+confidence = "high"
+summary = "Converts target and current percent to steps and calls motor_move"
+
+[[function]]
+name = "uart_command_dispatch"
+offset = 0x4cfc
+confidence = "high"
+summary = "Tuya-style 0x55 0xaa frame command dispatcher"
+
+[[function]]
+name = "mcu_version_packed"
+offset = 0x4ed4
+confidence = "high"
+summary = "Parses the version string at image 0x4f28 into major << 6 | minor << 4 | patch"
+
+[[function]]
+name = "datapoint_command_dispatch"
+offset = 0x4f64
+confidence = "high"
+summary = "Applies datapoint commands from the Zigbee SoC"
+
+[[function]]
+name = "ota_data_block"
+offset = 0x5438
+confidence = "high"
+summary = "Firmware update data blocks: part table, slot choice, flash writes, checksum"
+
+[[function]]
+name = "datapoint_report_builder"
+offset = 0x5af4
+confidence = "high"
+summary = "Builds datapoint reports to the Zigbee SoC"
+
+[[function]]
+name = "ota_notification"
+offset = 0x55d8
+confidence = "high"
+summary = "Firmware update notification: product id, version gate, size, checksum"
+
+[[function]]
+name = "settings_save_and_report"
+offset = 0x6014
+confidence = "medium"
+summary = "Persists settings to data flash (debounced) and reports"
+
+[[function]]
+name = "valve_percent_for_decision"
+offset = 0x648c
+confidence = "high"
+summary = "(open_flag): open -> settings.valve_opening_degree, closed -> 100 - settings.valve_closing_degree"
+
+[[function]]
+name = "thermostat_loop"
+offset = 0x6570
+confidence = "high"
+summary = "Chooses open or closed and feeds the valve percent to the motor"
+
+[[function]]
+name = "child_lock_set"
+offset = 0x6aec
+confidence = "high"
+summary = "(locked, report)"
+
+[[function]]
+name = "thermostat_kick"
+offset = 0x6b10
+confidence = "medium"
+summary = "(enable): enables the thermostat loop and runs it now"
+
+[[function]]
+name = "mode_set"
+offset = 0x6b54
+confidence = "high"
+summary = "(mode 0 heat | 1 off | 2 auto, is_local)"
+
+[[function]]
+name = "setpoint_set"
+offset = 0x6c18
+confidence = "high"
+summary = "(setpoint, is_local): is_local defers the save 2 s and the re-evaluation 5 s"
+
+[[function]]
+name = "valve_set_percent_and_notify"
+offset = 0x6d38
+confidence = "high"
+summary = "(percent): valve_set_target_percent plus reporting"
+
+[[function]]
+name = "update_bitmap_commit"
+offset = 0x7010
+confidence = "high"
+summary = "Clears the next bit of the 64-bit update bitmap and persists it"
+
+[[function]]
+name = "ota_flash_write"
+offset = 0x7108
+confidence = "high"
+summary = "Writes one update block to code flash at slot base + offset"
+
+[[function]]
+name = "clamp"
+offset = 0x7148
+confidence = "high"
+summary = "(value, maximum, minimum, ...): used by the knob path"
+
+# --- Code locations inside functions ------------------------------------------
+
+[[label]]
+name = "ui_main_screen.event_switch"
+offset = 0x3064
+summary = "bl switch8 dispatching events 0-10"
+
+[[label]]
+name = "ui_main_screen.knob_step"
+offset = 0x314a
+summary = "Knob detent: auto mode returns here; heat and off step the pending setpoint"
+
+[[label]]
+name = "ui_main_screen.knob_clamp_call"
+offset = 0x3198
+summary = "bl clamp on the pending setpoint"
+
+[[label]]
+name = "ui_main_screen.knob_commit_call"
+offset = 0x31a2
+summary = "bl setpoint_set(pending, 1)"
+
+# --- RAM ----------------------------------------------------------------------
+
+[[ram]]
+name = "settings"
+address = 0x20000698
+fields = { screen_direction = 0x0a, maximum_setpoint = 0x0c, minimum_setpoint = 0x0d, heat_on_threshold = 0x07, control_law = 0x12, valve_opening_degree = 0x15, valve_closing_degree = 0x16, heat_off_threshold = 0x17, setpoint_auto = 0x1a, setpoint_manual = 0x1b, mode = 0x1c, child_lock = 0x1d }
+
+[[ram]]
+name = "runtime"
+address = 0x20000348
+fields = { thermostat_loop_enabled = 0x0c }
+
+[[ram]]
+name = "valve"
+address = 0x200003a8
+fields = { target_percent = 0x06, current_percent = 0x07, travel_steps = 0x34 }
+
+[[ram]]
+name = "ui_edit"
+address = 0x2000043e
+fields = { pending_value = 0x03 }
+
+[[ram]]
+name = "framebuffer"
+address = 0x200002c3
+fields = {}
+
+[[ram]]
+name = "update_bitmap"
+address = 0x200003a0
+fields = {}
+
+# --- Data tables ----------------------------------------------------------------
+
+[[table]]
+name = "motor_half_steps_direction_1"
+offset = 0x7348
+length = 8
+
+[[table]]
+name = "motor_half_steps_direction_2"
+offset = 0x7350
+length = 8
+
+[[table]]
+name = "slot_bases"
+offset = 0x77a4
+length = 8
+
+[[table]]
+name = "segment_bit_map"
+offset = 0x7818
+length = 7
+
+[[table]]
+name = "digit_font"
+offset = 0x781f
+length = 10
+
+[[table]]
+name = "letter_font"
+offset = 0x7829
+length = 26
+
+[[table]]
+name = "version_string"
+offset = 0x4f28
+length = 5
+
+# --- Never patch ------------------------------------------------------------------
+# The update path lives in the image being replaced; breaking it leaves no
+# over-the-air way back.
+
+[[protected]]
+name = "startup_and_vectors"
+start = 0x0
+end = 0x140
+
+[[protected]]
+name = "flash_trampolines"
+start = 0x348
+end = 0x360
+
+[[protected]]
+name = "uart_command_dispatch"
+start = 0x4cfc
+end = 0x4e94
+
+[[protected]]
+name = "ota_handlers"
+start = 0x5354
+end = 0x5690
+
+[[protected]]
+name = "update_bitmap_and_flash_write"
+start = 0x7010
+end = 0x7148
+
+[[protected]]
+name = "data_init_and_ram_code"
+start = 0x7900
+end = 0x7b64

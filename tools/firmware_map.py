@@ -31,6 +31,7 @@ import capstone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from trvzb.image import CODE_START, SLOT_A, iterate_call_sites  # noqa: E402
+from trvzb.symbols import SYMBOLS_PATH, Symbols, load_symbols  # noqa: E402
 
 IMAGE_PATH = os.environ.get("TRVZB_IMAGE", "work/mcu_app_a.bin")
 RAM_BASE = 0x20000000
@@ -86,6 +87,7 @@ class FirmwareMap:
         self.functions: dict[int, Function] = {}
         self.callers_of: dict[int, set[int]] = defaultdict(set)
         self.literal_readers: dict[int, set[int]] = defaultdict(set)
+        self.symbols: Symbols | None = load_symbols() if SYMBOLS_PATH.exists() else None
         self.switch8_helpers = {
             target for _, target in iterate_call_sites(self.image)
             if self.image[target : target + len(SWITCH8_SIGNATURE)] == SWITCH8_SIGNATURE
@@ -279,6 +281,14 @@ class FirmwareMap:
                 annotation += f' "{text}"'
         return annotation
 
+    def _annotate_call(self, mnemonic: str, operands: str) -> str:
+        """` <name>` for a branch to a named function, else empty."""
+        if self.symbols is None or not mnemonic.startswith("b") or mnemonic in ("bx", "blx", "bics", "bkpt"):
+            return ""
+        match = re.fullmatch(r"#(0x[0-9a-f]+|-?\d+)", operands.split(", ")[-1])
+        name = self.symbols.name_at(int(match.group(1), 0) & ~1) if match else None
+        return f" <{name}>" if name else ""
+
     @staticmethod
     def _annotate_data_reference(target: int, texts: dict[int, str]) -> str:
         annotation = f"  ; ->{target:#x}"
@@ -300,6 +310,7 @@ class FirmwareMap:
                 annotation = self._annotate_data_reference(function.data_references[address], texts)
             if address in function.literal_values:
                 annotation = self._annotate_literal(function.literal_values[address], texts)
+            annotation = self._annotate_call(instruction.mnemonic, instruction.operands) + annotation
             lines.append(f"{address:#07x}  {instruction.text}{annotation}")
         return "\n".join(lines)
 
@@ -394,6 +405,7 @@ class FirmwareMap:
                 if match:
                     target = ((decoded.address + 4) & ~3) + int(match.group(1), 0)
                     annotation = self._annotate_data_reference(target, texts)
+            annotation = self._annotate_call(decoded.mnemonic, decoded.op_str) + annotation
             lines.append(f"{decoded.address:#07x}  {decoded.mnemonic} {decoded.op_str}{annotation}")
         return lines
 
