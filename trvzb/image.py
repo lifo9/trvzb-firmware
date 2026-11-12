@@ -52,6 +52,20 @@ def decode_branch_with_link_target(address: int, first_halfword: int, second_hal
     return address + 4 + offset
 
 
+def encode_branch_with_link(address: int, target: int) -> bytes:
+    """The 32-bit Thumb `BL` at `address` that calls `target`, little-endian."""
+    offset = target - (address + 4)
+    if not -(1 << 24) <= offset < (1 << 24) or offset % 2:
+        raise ValueError(f"bl from {address:#x} cannot reach {target:#x}")
+    sign = 1 if offset < 0 else 0
+    offset &= (1 << 25) - 1
+    i1, i2 = (offset >> 23) & 1, (offset >> 22) & 1
+    j1, j2 = 1 - (i1 ^ sign), 1 - (i2 ^ sign)
+    first_halfword = 0xF000 | (sign << 10) | ((offset >> 12) & 0x3FF)
+    second_halfword = 0xD000 | (j1 << 13) | (j2 << 11) | ((offset >> 1) & 0x7FF)
+    return first_halfword.to_bytes(2, "little") + second_halfword.to_bytes(2, "little")
+
+
 def iterate_call_sites(image: bytes) -> Iterator[tuple[int, int]]:
     """Yield (call_site, target) for every BL encoding found in the image.
 

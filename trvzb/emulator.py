@@ -3,8 +3,12 @@
 Maps a slot at its link address, 4 KB of RAM and zero-filled peripheral space.
 Every call to a known function start is intercepted and recorded with its
 arguments, and returns a configurable value, except for functions explicitly
-allowed to run (pure helpers such as the clamp). A fragment that ends with a
-`pop {..., pc}` returns into a trap address, which stops the run.
+allowed to run (pure helpers such as the clamp) and function starts inside
+patched ranges, whose new code runs. A stub is no kinder than a real callee:
+it destroys the registers and flags the calling convention lets a callee
+destroy, so code that wrongly relies on them fails here as it would on the
+valve. A fragment that ends with a `pop {..., pc}` returns into a trap address,
+which stops the run.
 """
 
 from __future__ import annotations
@@ -14,10 +18,12 @@ from dataclasses import dataclass, field
 
 from unicorn import UC_ARCH_ARM, UC_HOOK_CODE, UC_MODE_MCLASS, UC_MODE_THUMB, Uc
 from unicorn.arm_const import (
+    UC_ARM_REG_APSR_NZCV,
     UC_ARM_REG_LR,
     UC_ARM_REG_PC,
     UC_ARM_REG_R0,
     UC_ARM_REG_R1,
+    UC_ARM_REG_R12,
     UC_ARM_REG_R2,
     UC_ARM_REG_R3,
     UC_ARM_REG_R4,
@@ -37,6 +43,10 @@ PERIPHERAL_REGIONS = ((0x40000000, 0x100000), (0xE0000000, 0x100000))
 RETURN_TRAP = 0xFF00
 INSTRUCTION_LIMIT = 20000
 ARGUMENT_REGISTERS = (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3)
+# What a stub leaves in the caller-clobbered registers and flags: distinctive
+# values, and condition flags N=1 Z=0 C=1 V=1.
+CLOBBERED_REGISTER_VALUES = {UC_ARM_REG_R1: 0xBAD00001, UC_ARM_REG_R2: 0xBAD00002, UC_ARM_REG_R3: 0xBAD00003, UC_ARM_REG_R12: 0xBAD0000C}
+CLOBBERED_FLAGS = 0xB0000000
 CALLEE_SAVED_REGISTERS = {
     "r3": UC_ARM_REG_R3, "r4": UC_ARM_REG_R4, "r5": UC_ARM_REG_R5, "r6": UC_ARM_REG_R6, "r7": UC_ARM_REG_R7,
 }
@@ -54,6 +64,7 @@ class FirmwareEmulator:
     slot_image: bytes
     function_starts: set[int]
     allowed_functions: set[int] = field(default_factory=set)
+    patched_ranges: list[tuple[int, int]] = field(default_factory=list)
     return_values: dict[int, int | Callable[[tuple[int, int, int, int]], int]] = field(default_factory=dict)
     calls: list[RecordedCall] = field(default_factory=list)
 
@@ -64,6 +75,11 @@ class FirmwareEmulator:
         self.engine.mem_map(RAM_BASE, RAM_SIZE)
         for start, size in PERIPHERAL_REGIONS:
             self.engine.mem_map(start, size)
+        self.stubbed_starts = {
+            start
+            for start in self.function_starts - self.allowed_functions
+            if not any(patch_start <= start < patch_start + length for patch_start, length in self.patched_ranges)
+        }
         self.engine.hook_add(UC_HOOK_CODE, self._intercept_calls, begin=0, end=FLASH_SIZE - 1)
 
     def _intercept_calls(self, engine: Uc, address: int, size: int, user_data: object) -> None:
@@ -71,15 +87,21 @@ class FirmwareEmulator:
             engine.emu_stop()
             return
         image_offset = address - self.slot.link_base
-        is_stubbed = image_offset in self.function_starts and image_offset not in self.allowed_functions
-        if not is_stubbed:
+        if image_offset not in self.stubbed_starts:
             return
         arguments = tuple(engine.reg_read(register) for register in ARGUMENT_REGISTERS)
         self.calls.append(RecordedCall(image_offset, arguments))
         configured = self.return_values.get(image_offset, 0)
         return_value = configured(arguments) if callable(configured) else configured
         engine.reg_write(UC_ARM_REG_R0, return_value & 0xFFFFFFFF)
+        for register, clobbered_value in CLOBBERED_REGISTER_VALUES.items():
+            engine.reg_write(register, clobbered_value)
+        engine.reg_write(UC_ARM_REG_APSR_NZCV, CLOBBERED_FLAGS)
         engine.reg_write(UC_ARM_REG_PC, engine.reg_read(UC_ARM_REG_LR))
+
+    def write_code(self, image_offset: int, code: bytes) -> None:
+        """Place code at an image offset in this emulator's slot, e.g. a patch site."""
+        self.engine.mem_write(self.slot.mcu_address(image_offset), code)
 
     def write_byte(self, address: int, value: int) -> None:
         self.engine.mem_write(address, bytes([value & 0xFF]))

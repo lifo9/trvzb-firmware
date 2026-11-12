@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from build_patch import build_patch_set
 from conftest import REPOSITORY_ROOT, SyntheticOta
+from trvzb.image import encode_branch_with_link
 from trvzb.ota import OtaFile
 from trvzb.patch import PatchSet, PatchSite
 from trvzb.symbols import load_symbols
@@ -22,17 +23,6 @@ from trvzb.verify import (
     unexpected_changes,
     version_consistency,
 )
-
-
-def encode_branch_with_link(address: int, target: int) -> bytes:
-    offset = target - (address + 4)
-    sign = 1 if offset < 0 else 0
-    offset &= (1 << 25) - 1
-    i1, i2 = (offset >> 23) & 1, (offset >> 22) & 1
-    j1, j2 = 1 - (i1 ^ sign), 1 - (i2 ^ sign)
-    first = 0xF000 | (sign << 10) | ((offset >> 12) & 0x3FF)
-    second = 0xD000 | (j1 << 13) | (j2 << 11) | ((offset >> 1) & 0x7FF)
-    return first.to_bytes(2, "little") + second.to_bytes(2, "little")
 
 
 def test_unexpected_changes__flags_a_byte_outside_every_site(synthetic_ota: SyntheticOta) -> None:
