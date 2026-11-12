@@ -54,3 +54,17 @@ def test_build_patch_set__refuses_code_outside_a_site(stock_ota_path: Path, tmp_
     (tmp_path / "sites.toml").write_text((IDENTITY_PATCH / "sites.toml").read_text())
     with pytest.raises(SystemExit, match="outside a .site section"):
         build_patch_set(tmp_path, OtaFile(str(stock_ota_path)), load_symbols())
+
+
+@requires_assembler
+def test_build_patch_set__refuses_a_site_the_linker_would_pad(stock_ota_path: Path, tmp_path: Path) -> None:
+    (tmp_path / "patch.S").write_text(
+        "    .syntax unified\n    .thumb\n    .include \"stock_symbols.inc\"\n"
+        "    .section .site.needs_word_alignment, \"ax\"\n"
+        "    ldr r0, =SETTINGS\n    bx lr\n    .ltorg\n"
+    )
+    (tmp_path / "sites.toml").write_text(
+        'name = "misaligned"\n\n[[site]]\nname = "needs_word_alignment"\noffset = 0x314a\nmax_length = 0x20\n'
+    )
+    with pytest.raises(ValueError, match="alignment"):
+        build_patch_set(tmp_path, OtaFile(str(stock_ota_path)), load_symbols())

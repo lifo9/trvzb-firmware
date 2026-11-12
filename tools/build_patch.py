@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -112,16 +113,32 @@ def build_linker_script(slot: Slot, sites: list[SiteSpecification]) -> str:
     )
 
 
-def run(command: list[str]) -> None:
+def run(command: list[str]) -> str:
     result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode != 0:
         raise SystemExit(f"{' '.join(command)} failed:\n{result.stdout}{result.stderr}")
+    return result.stdout
+
+
+def parse_section_headers(objdump_headers: str) -> dict[str, tuple[int, int]]:
+    """Section name -> (size, alignment) from `objdump -h` output."""
+    sections = {}
+    for line in objdump_headers.splitlines():
+        match = re.match(r"\s*\d+\s+(\S+)\s+([0-9a-f]+)\s+[0-9a-f]+\s+[0-9a-f]+\s+[0-9a-f]+\s+2\*\*(\d+)", line)
+        if match:
+            sections[match.group(1)] = (int(match.group(2), 16), 1 << int(match.group(3)))
+    return sections
 
 
 def assemble_slot(
     patch_directory: Path, slot_name: str, sites: list[SiteSpecification], include_text: str, work_directory: Path
 ) -> dict[str, bytes]:
-    """Bytes of every site section for one slot."""
+    """Bytes of every site section for one slot.
+
+    Refuses a site the linker would pad: ld silently inserts filler before a
+    section whose alignment its address does not meet, which shifts every
+    instruction and breaks any stock branch into the site.
+    """
     slot = SLOTS[slot_name]
     (work_directory / "stock_symbols.inc").write_text(include_text)
     object_path = work_directory / f"patch_{slot_name}.o"
@@ -133,11 +150,24 @@ def assemble_slot(
         "-I", str(work_directory), str(patch_directory / "patch.S"), "-o", str(object_path),
     ])
     run(["arm-none-eabi-ld", "--orphan-handling=error", "-T", str(linker_script_path), str(object_path), "-o", str(elf_path)])
+    assembled_sections = parse_section_headers(run(["arm-none-eabi-objdump", "-h", str(object_path)]))
     site_bytes = {}
     for site in sites:
+        section_name = f".site.{site.name}"
+        if section_name not in assembled_sections:
+            raise ValueError(f"sites.toml declares {site.name}, but patch.S has no {section_name} section")
+        assembled_size, alignment = assembled_sections[section_name]
+        site_address = slot.mcu_address(site.offset)
+        if site_address % alignment != 0:
+            raise ValueError(
+                f"site {site.name} needs {alignment}-byte alignment, but its address {site_address:#x} is not aligned; "
+                "the linker would pad it"
+            )
         section_path = work_directory / f"site_{slot_name}_{site.name}.bin"
-        run(["arm-none-eabi-objcopy", "-O", "binary", f"--only-section=.site.{site.name}", str(elf_path), str(section_path)])
+        run(["arm-none-eabi-objcopy", "-O", "binary", f"--only-section={section_name}", str(elf_path), str(section_path)])
         site_bytes[site.name] = section_path.read_bytes()
+        if len(site_bytes[site.name]) != assembled_size:
+            raise ValueError(f"site {site.name} assembled to {assembled_size} bytes but linked to {len(site_bytes[site.name])}")
     return site_bytes
 
 
