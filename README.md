@@ -48,6 +48,7 @@ image is linked at MCU address `0x400`, so MCU address = image offset +
 
 ## Documents
 
+- [docs/operating-model.md](docs/operating-model.md) — who controls the valve: HA thermostat, knob, manual setting
 - [docs/firmware-layout.md](docs/firmware-layout.md) — hardware, OTA container, memory map, RAM structures
 - [docs/datapoints.md](docs/datapoints.md) — datapoint table and its mapping to Zigbee attributes
 - [docs/control-flow.md](docs/control-flow.md) — thermostat → valve → motor, knob, display
