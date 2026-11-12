@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from build_ota import OtaFile
+from trvzb.ota import OtaFile
 from conftest import REPOSITORY_ROOT, VERSION_STRING_OFFSETS, SyntheticOta, build_synthetic_ota_bytes
 
 EXPERIMENT_1_SHA512 = (

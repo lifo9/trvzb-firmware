@@ -23,6 +23,12 @@ from dataclasses import dataclass, field
 
 import capstone
 
+# The tools run under `python3 -I` because they read untrusted firmware files,
+# and isolated mode leaves the repository off the import path.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from trvzb.image import CODE_START, iterate_call_sites  # noqa: E402
+
 IMAGE_PATH = os.environ.get("TRVZB_IMAGE", "work/mcu_app_a.bin")
 RAM_BASE = 0x20000000
 RAM_END = 0x20001000
@@ -81,26 +87,9 @@ class FirmwareMap:
         recursive pass that consumes these seeds discards the ones that do not
         disassemble into a plausible function.
         """
-        targets: set[int] = set()
-        for address in range(0xC0, len(self.image) - 4, 2):
-            first_halfword, second_halfword = struct.unpack_from("<HH", self.image, address)
-            is_branch_with_link = (first_halfword & 0xF800) == 0xF000 and (second_halfword & 0xD000) == 0xD000
-            if not is_branch_with_link:
-                continue
-            sign = (first_halfword >> 10) & 1
-            upper_bits = first_halfword & 0x3FF
-            j1 = (second_halfword >> 13) & 1
-            j2 = (second_halfword >> 11) & 1
-            lower_bits = second_halfword & 0x7FF
-            i1 = 1 - (j1 ^ sign)
-            i2 = 1 - (j2 ^ sign)
-            offset = (sign << 24) | (i1 << 23) | (i2 << 22) | (upper_bits << 12) | (lower_bits << 1)
-            if sign:
-                offset -= 1 << 25
-            target = address + 4 + offset
-            if 0xC0 <= target < len(self.image) and target % 2 == 0:
-                targets.add(target)
-        return sorted(targets)
+        return sorted(
+            {target for _, target in iterate_call_sites(self.image) if target >= CODE_START and target % 2 == 0}
+        )
 
     def _analyze(self) -> None:
         pending = list(dict.fromkeys(self.vector_table() + self._linear_sweep_call_targets()))

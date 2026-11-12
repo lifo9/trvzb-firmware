@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPOSITORY_ROOT / "tools"))
+sys.path.insert(0, str(REPOSITORY_ROOT))
 
 OTA_MAGIC = 0x0BEEF11E
 OTA_HEADER_LENGTH = 56

@@ -13,10 +13,10 @@ import os
 import sys
 
 # The tools run under `python3 -I` because they read untrusted firmware files,
-# and isolated mode leaves the script's own directory off the import path.
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# and isolated mode leaves the repository off the import path.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from build_ota import OtaFile  # noqa: E402
+from trvzb.ota import OtaFile  # noqa: E402
 
 
 def main() -> None:
