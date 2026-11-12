@@ -143,3 +143,23 @@ def test_image_calls_overlapping_sites__decodes_calls_from_the_built_image(synth
     patch_set = PatchSet("one_byte", [one_byte_site])
     assert image_calls_overlapping_sites(built, patch_set, function_starts={0x170})
     assert not image_calls_overlapping_sites(built, patch_set, function_starts={0x180})
+
+
+def test_main__shows_an_unrecorded_release_hash_as_pending(stock_ota_path: Path, tmp_path: Path) -> None:
+    manifest_text = (REPOSITORY_ROOT / "releases" / "1.4.5-verstest.toml").read_text()
+    unrecorded = tmp_path / "1.4.5-verstest.toml"
+    unrecorded.write_text("\n".join(line for line in manifest_text.splitlines() if not line.startswith("sha512")) + "\n")
+    environment = {**os.environ, "TRVZB_OTA": str(stock_ota_path)}
+    built_path = tmp_path / "built.ota"
+    subprocess.run(
+        [sys.executable, "-I", str(REPOSITORY_ROOT / "tools" / "build_ota.py"), str(built_path),
+         "--mcu-version", "1.3.2", "--file-version", "0x1405"],
+        env=environment, check=True, capture_output=True,
+    )
+    result = subprocess.run(
+        [sys.executable, "-I", str(REPOSITORY_ROOT / "tools" / "verify_ota.py"), str(built_path), "--manifest", str(unrecorded)],
+        env=environment, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stdout
+    assert "PENDING  image is the recorded release" in result.stdout
+    assert "FAIL" not in result.stdout

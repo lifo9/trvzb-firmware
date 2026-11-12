@@ -73,6 +73,9 @@ def main() -> None:
     allowed = site_ranges(patch_set, version_offsets, len(stock_version_text))
 
     function_starts, instruction_starts = stock_code_map(stock)
+    # Checks that cannot run yet, such as the release hash of a release under
+    # review; shown, but not failures.
+    pending: dict[str, str] = {}
     checks = {
         "image holds the reviewed site bytes": site_bytes_mismatches(built, patch_set),
         "only declared bytes changed": unexpected_changes(stock, built, allowed),
@@ -91,7 +94,7 @@ def main() -> None:
             [] if stock_sha512 == manifest.stock_sha512 else [f"stock {stock_sha512[:16]}…, manifest pins {manifest.stock_sha512[:16]}…"]
         )
         if manifest.sha512 is None:
-            checks["image is the recorded release"] = ["the manifest records no sha512 yet"]
+            pending["image is the recorded release"] = f"the manifest records no sha512 yet; this image is {built_sha512}"
         else:
             checks["image is the recorded release"] = (
                 [] if built_sha512 == manifest.sha512 else [f"image {built_sha512[:16]}…, manifest records {manifest.sha512[:16]}…"]
@@ -100,6 +103,9 @@ def main() -> None:
         print(line)
     print()
     failed = False
+    for description, reason in pending.items():
+        print(f"PENDING  {description}")
+        print(f"      {reason}")
     for description, problems in checks.items():
         print(f"{'PASS' if not problems else 'FAIL'}  {description}")
         for problem in problems[:20]:
