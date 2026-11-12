@@ -68,6 +68,7 @@ class FirmwareEmulator:
     patched_ranges: list[tuple[int, int]] = field(default_factory=list)
     clobbered_flags: int = COMPLEMENTARY_FLAG_PATTERNS[0]
     return_values: dict[int, int | Callable[[tuple[int, int, int, int]], int]] = field(default_factory=dict)
+    stub_effects: dict[int, Callable[[FirmwareEmulator, tuple[int, int, int, int]], None]] = field(default_factory=dict)
     calls: list[RecordedCall] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -93,6 +94,8 @@ class FirmwareEmulator:
             return
         arguments = tuple(engine.reg_read(register) for register in ARGUMENT_REGISTERS)
         self.calls.append(RecordedCall(image_offset, arguments))
+        if image_offset in self.stub_effects:
+            self.stub_effects[image_offset](self, arguments)
         configured = self.return_values.get(image_offset, 0)
         return_value = configured(arguments) if callable(configured) else configured
         engine.reg_write(UC_ARM_REG_R0, return_value & 0xFFFFFFFF)
@@ -150,6 +153,11 @@ class FirmwareEmulator:
         self.engine.emu_start(self.slot.mcu_address(start_offset) | 1, self.slot.mcu_address(stop_offset), count=INSTRUCTION_LIMIT)
         if self.engine.reg_read(UC_ARM_REG_PC) != self.slot.mcu_address(stop_offset):
             raise RuntimeError(f"did not reach {stop_offset:#x}; stopped at {self.engine.reg_read(UC_ARM_REG_PC):#x}")
+
+    def read_register(self, name: str) -> int:
+        """r0-r7 after a run, e.g. a second return value in r1."""
+        registers = {"r0": UC_ARM_REG_R0, "r1": UC_ARM_REG_R1, "r2": UC_ARM_REG_R2, "r3": UC_ARM_REG_R3, **CALLEE_SAVED_REGISTERS}
+        return self.engine.reg_read(registers[name])
 
     def read_bytes(self, address: int, length: int) -> bytes:
         return bytes(self.engine.mem_read(address, length))

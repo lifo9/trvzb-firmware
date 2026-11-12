@@ -20,6 +20,18 @@ confidence = "high"
 summary = "ARM Compiler __ARM_common_switch8: byte switch table follows each bl"
 
 [[function]]
+name = "unsigned_divide"
+offset = 0x13c
+confidence = "high"
+summary = "(dividend, divisor): quotient in r0, remainder in r1; must run for real, a stub cannot return r1"
+
+[[function]]
+name = "signed_divide"
+offset = 0x168
+confidence = "high"
+summary = "(dividend, divisor): signed quotient in r0, remainder in r1 (C semantics); must run for real"
+
+[[function]]
 name = "flash_program_trampoline"
 offset = 0x348
 confidence = "high"

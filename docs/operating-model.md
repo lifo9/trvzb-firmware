@@ -107,7 +107,10 @@ Unchanged: the child lock gesture, the pairing gesture in `OF`, screen rotation.
 
 - **Child lock off.** The reference device has it on; a 3 s knob press toggles it.
 - **Weekly schedule at 35 °C in every slot**, so auto mode stays pinned open.
-- **Every weekday enabled in the per-day table** (settings `+0x9d`, probably
-  datapoint 118): the mode setter refuses any change on a disabled day.
+- **Every weekday enabled in datapoint 118** (settings `+0x9e`–`+0xa4`): the
+  mode setter refuses every change on a disabled day, so neither the knob nor
+  Home Assistant could switch heating on or off that day, and the heat
+  fallback of requirement 3 would not help. How to read datapoint 118 over
+  Zigbee is not known yet.
 - Home Assistant automations as described above, replacing the current pin
   (which forces heat mode) and mirror (which writes regardless of mode).

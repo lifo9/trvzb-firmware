@@ -204,3 +204,16 @@ def test_display_is_awake__reads_the_display_state(firmware: FirmwareMap, symbol
     display_state_address, awake_field = symbols.field_address("display_state.awake")
     readers, _ = firmware.field_accesses(display_state_address)
     assert symbols.offset("display_is_awake") in readers[awake_field]
+
+
+@pytest.mark.parametrize(
+    "helper_name, dividend, divisor, quotient, remainder",
+    [("unsigned_divide", 17, 5, 3, 2), ("signed_divide", 17, 5, 3, 2), ("signed_divide", -7, 3, -2, -1)],
+)
+def test_divide_helpers__return_quotient_and_remainder(
+    image: bytes, symbols: Symbols, helper_name: str, dividend: int, divisor: int, quotient: int, remainder: int
+) -> None:
+    emulator = FirmwareEmulator(slot=SLOT_A, slot_image=image, function_starts=set())
+    as_signed = lambda value: value - (1 << 32) if value & 0x80000000 else value
+    assert as_signed(emulator.call_function(symbols.offset(helper_name), (dividend, divisor))) == quotient
+    assert as_signed(emulator.read_register("r1")) == remainder

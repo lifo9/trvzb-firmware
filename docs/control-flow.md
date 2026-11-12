@@ -118,8 +118,10 @@ emulation, `tests/test_emulator_stock_mode.py`):
 - auto (2) while runtime `+0x12` (`time_synced`) is 0. Only `0x6ae0` sets it,
   from the time-sync handler, so auto is unavailable until the valve has
   received the time over Zigbee — for example right after a battery change;
-- any change while today's byte in the per-weekday table at settings `+0x9d`
-  is 0 (the weekday comes from the clock reader `0x1dc4`).
+- any change while today's byte at settings `+0x9d + weekday` is 0. The clock
+  reader `0x1dc4` yields weekdays 1–7 (`0x1e00`–`0x1e0e` turns 0 into 7), so
+  the guard reads `+0x9e`–`+0xa4`: exactly the seven bytes datapoint 118
+  writes. On a disabled day every change is refused, heat and off included.
 
 Knob channels bypass the button debounce/hold state machine: one detent is
 exactly one event, with no acceleration or repeat.

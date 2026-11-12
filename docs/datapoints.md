@@ -32,7 +32,7 @@ list.
 | 112, 113 | value | idle steps, closing steps (**report only**) | — | medium-high |
 | 114, 115, 116 | value | opening-limit, closing-limit, motor-running voltages (**report only**) | — | medium-high |
 | 117 | — | does not exist (absent from the type table) | — | high |
-| 118 | bitmap | 7-bit per-day schedule enable mask | `0x5150` | medium |
+| 118 | bitmap | 7-bit per-day mask, one byte per weekday at settings `+0x9e`–`+0xa4`; `mode_set` refuses every change on a day whose byte is 0 | `0x5150` | high (storage, guard) / medium (name) |
 | **119** | value | **valve opening degree**, 0–100; the handler stores the byte unchecked (`0x5178`) | settings `+0x15` | **high** |
 | **120** | value | **valve closing degree**, 0–100 | settings `+0x16` | **high** |
 | 121 | bool | open-window detection | `0x5192` → `0x6be8` | medium-high |
