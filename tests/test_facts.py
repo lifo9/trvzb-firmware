@@ -131,3 +131,41 @@ def test_knob_path__is_outside_protected_ranges(symbols: Symbols) -> None:
     knob_step = symbols.offset("ui_main_screen.knob_step")
     commit_call = symbols.offset("ui_main_screen.knob_commit_call")
     assert not any(protected.overlaps(knob_step, commit_call + 4 - knob_step) for protected in symbols.protected_ranges)
+
+
+@pytest.mark.parametrize("function_name", ["ui_main_screen", "draw_character"])
+def test_region__covers_its_function_code_exactly(firmware: FirmwareMap, symbols: Symbols, function_name: str) -> None:
+    function = firmware.functions[symbols.offset(function_name)]
+    region = symbols.regions[function_name]
+    assert region.start == function.address
+    assert region.end >= function.end_address
+
+
+def test_code_cave__is_zero_and_referenced_only_by_the_scatter_loader(image: bytes, symbols: Symbols) -> None:
+    cave = symbols.regions["code_cave"]
+    assert image[cave.start : cave.end] == bytes(cave.end - cave.start)
+    word_offsets_pointing_into_cave = [
+        offset for offset in range(0, len(image) - 3, 4)
+        if cave.start + 0x400 <= int.from_bytes(image[offset : offset + 4], "little") < cave.end + 0x400
+    ]
+    scatter_loader_end_bound, data_init_entry_source = 0x2EC, 0x7908
+    assert word_offsets_pointing_into_cave == [scatter_loader_end_bound, data_init_entry_source]
+
+
+def test_code_cave__is_overwritten_by_the_vector_copy(image: bytes, symbols: Symbols) -> None:
+    cave = symbols.regions["code_cave"]
+    source, destination, length, _ = (int.from_bytes(image[0x7908 + 4 * index : 0x790C + 4 * index], "little") for index in range(4))
+    vector_copy_word_count = 0x30
+    assert (source - 0x400, destination, length) == (cave.start, 0x20000000, vector_copy_word_count * 4)
+
+
+@pytest.mark.parametrize("protected_name", ["scatter_loader", "vector_copy_and_vtor", "system_reset", "uart_frame_parser", "ota_block_request", "uart_frame_send"])
+def test_protected_function_range__covers_the_whole_function(firmware: FirmwareMap, symbols: Symbols, protected_name: str) -> None:
+    protected = next(entry for entry in symbols.protected_ranges if entry.name == protected_name)
+    function = firmware.functions[protected.start]
+    assert protected.end >= function.end_address
+
+
+def test_regions__never_overlap_protected_ranges(symbols: Symbols) -> None:
+    for region in symbols.regions.values():
+        assert not any(protected.overlaps(region.start, region.end - region.start) for protected in symbols.protected_ranges), region.name

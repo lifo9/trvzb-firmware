@@ -296,6 +296,28 @@ name = "version_string"
 offset = 0x4f28
 length = 5
 
+# --- Patchable regions -------------------------------------------------------
+# A patch set lists the regions it may touch in its sites.toml; build_patch
+# refuses any site outside them. The never-patch ranges below are a backstop.
+
+[[region]]
+name = "ui_main_screen"
+start = 0x2e38
+end = 0x31a8
+
+[[region]]
+name = "draw_character"
+start = 0x32b0
+end = 0x3354
+
+# 192 zero bytes the scatter loader copies to RAM 0x20000000, which the
+# vector-table copy at 0x1cb4 overwrites before VTOR points there. Nothing else
+# reads them: the only other reference is the loader's end bound at 0x2ec.
+[[region]]
+name = "code_cave"
+start = 0x7948
+end = 0x7a08
+
 # --- Never patch ------------------------------------------------------------------
 # The update path lives in the image being replaced; breaking it leaves no
 # over-the-air way back.
@@ -306,9 +328,24 @@ start = 0x0
 end = 0x140
 
 [[protected]]
+name = "scatter_loader"
+start = 0x2cc
+end = 0x346
+
+[[protected]]
 name = "flash_trampolines"
 start = 0x348
 end = 0x360
+
+[[protected]]
+name = "vector_copy_and_vtor"
+start = 0x1cb4
+end = 0x1d70
+
+[[protected]]
+name = "system_reset"
+start = 0x1d9c
+end = 0x1dae
 
 [[protected]]
 name = "uart_command_dispatch"
@@ -321,11 +358,36 @@ start = 0x5354
 end = 0x5690
 
 [[protected]]
+name = "uart_frame_parser"
+start = 0x57b4
+end = 0x5866
+
+[[protected]]
+name = "ota_block_request"
+start = 0x58f0
+end = 0x5946
+
+[[protected]]
+name = "uart_frame_send"
+start = 0x5d1c
+end = 0x5d9e
+
+[[protected]]
 name = "update_bitmap_and_flash_write"
 start = 0x7010
 end = 0x7148
 
 [[protected]]
-name = "data_init_and_ram_code"
+name = "slot_bases"
+start = 0x77a4
+end = 0x77ac
+
+[[protected]]
+name = "data_init_table"
 start = 0x7900
+end = 0x7948
+
+[[protected]]
+name = "ram_code_and_data"
+start = 0x7a08
 end = 0x7b64

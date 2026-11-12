@@ -8,8 +8,10 @@ A patch set directory holds:
   setpoint_set` works), every
   table as a data symbol, every code label with `.` written as `__`, and every
   RAM struct field as `<STRUCT>_<FIELD>` (offset) plus `<STRUCT>` (address).
-- `sites.toml`: one `[[site]]` per section, with `name`, `offset` (slot-A image
-  offset) and `max_length` (bytes the site may overwrite).
+- `sites.toml`: `regions`, the analysis/symbols.toml regions the patch set may
+  touch, and one `[[site]]` per section with `name`, `offset` (slot-A image
+  offset) and `max_length` (bytes the site may overwrite). A site outside every
+  listed region is refused.
 
 Each slot is linked with the stock symbols based at its link address and every
 site placed at its MCU address, so branch offsets and absolute flash addresses
@@ -53,13 +55,29 @@ class SiteSpecification:
     max_length: int
 
 
-def load_site_specifications(sites_path: Path) -> tuple[str, list[SiteSpecification]]:
+def load_site_specifications(sites_path: Path) -> tuple[str, list[str], list[SiteSpecification]]:
     with open(sites_path, "rb") as sites_file:
         document = tomllib.load(sites_file)
     sites = [SiteSpecification(entry["name"], entry["offset"], entry["max_length"]) for entry in document.get("site", [])]
     if not sites:
         raise ValueError(f"{sites_path} declares no sites")
-    return document["name"], sites
+    region_names = document.get("regions", [])
+    if not region_names:
+        raise ValueError(f"{sites_path} declares no regions; list the symbols.toml regions this patch set may touch")
+    return document["name"], region_names, sites
+
+
+def sites_outside_regions(sites: list[SiteSpecification], region_names: list[str], symbols: Symbols) -> list[str]:
+    """Sites whose maximum extent is not inside one of the patch set's declared regions."""
+    unknown = [name for name in region_names if name not in symbols.regions]
+    if unknown:
+        raise ValueError(f"unknown regions {unknown}; known: {sorted(symbols.regions)}")
+    regions = [symbols.regions[name] for name in region_names]
+    return [
+        f"site {site.name} ({site.offset:#x}, up to {site.max_length} bytes) lies outside regions {region_names}"
+        for site in sites
+        if not any(region.contains(site.offset, site.max_length) for region in regions)
+    ]
 
 
 def build_stock_symbols_include(symbols: Symbols) -> str:
@@ -173,7 +191,10 @@ def assemble_slot(
 
 
 def build_patch_set(patch_directory: Path, stock_ota: OtaFile, symbols: Symbols) -> PatchSet:
-    patch_set_name, sites = load_site_specifications(patch_directory / "sites.toml")
+    patch_set_name, region_names, sites = load_site_specifications(patch_directory / "sites.toml")
+    outside = sites_outside_regions(sites, region_names, symbols)
+    if outside:
+        raise ValueError("; ".join(outside))
     include_text = build_stock_symbols_include(symbols)
     with tempfile.TemporaryDirectory() as temporary_directory:
         bytes_by_slot = {

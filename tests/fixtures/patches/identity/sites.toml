@@ -1,4 +1,5 @@
 name = "identity"
+regions = ["ui_main_screen", "draw_character"]
 
 [[site]]
 name = "knob_commit"

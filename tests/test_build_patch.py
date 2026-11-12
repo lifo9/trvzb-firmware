@@ -64,7 +64,17 @@ def test_build_patch_set__refuses_a_site_the_linker_would_pad(stock_ota_path: Pa
         "    ldr r0, =SETTINGS\n    bx lr\n    .ltorg\n"
     )
     (tmp_path / "sites.toml").write_text(
-        'name = "misaligned"\n\n[[site]]\nname = "needs_word_alignment"\noffset = 0x314a\nmax_length = 0x20\n'
+        'name = "misaligned"\nregions = ["ui_main_screen"]\n\n[[site]]\nname = "needs_word_alignment"\noffset = 0x314a\nmax_length = 0x20\n'
     )
     with pytest.raises(ValueError, match="alignment"):
+        build_patch_set(tmp_path, OtaFile(str(stock_ota_path)), load_symbols())
+
+
+@requires_assembler
+def test_build_patch_set__refuses_a_site_outside_its_declared_regions(stock_ota_path: Path, tmp_path: Path) -> None:
+    (tmp_path / "patch.S").write_text((IDENTITY_PATCH / "patch.S").read_text())
+    (tmp_path / "sites.toml").write_text(
+        (IDENTITY_PATCH / "sites.toml").read_text().replace('regions = ["ui_main_screen", "draw_character"]', 'regions = ["ui_main_screen"]')
+    )
+    with pytest.raises(ValueError, match="digit_font_pointer .* lies outside regions"):
         build_patch_set(tmp_path, OtaFile(str(stock_ota_path)), load_symbols())

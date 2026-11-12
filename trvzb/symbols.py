@@ -34,12 +34,23 @@ class ProtectedRange:
 
 
 @dataclass(frozen=True)
+class Region:
+    name: str
+    start: int
+    end: int
+
+    def contains(self, start: int, length: int) -> bool:
+        return self.start <= start and start + length <= self.end
+
+
+@dataclass(frozen=True)
 class Symbols:
     function_offsets: dict[str, int]
     label_offsets: dict[str, int]
     ram_structs: dict[str, RamStruct]
     tables: dict[str, Table]
     protected_ranges: list[ProtectedRange]
+    regions: dict[str, Region]
 
     def offset(self, name: str) -> int:
         """Image offset of a function or label."""
@@ -79,4 +90,5 @@ def load_symbols(path: Path = SYMBOLS_PATH) -> Symbols:
         protected_ranges=[
             ProtectedRange(entry["name"], entry["start"], entry["end"]) for entry in document.get("protected", [])
         ],
+        regions={entry["name"]: Region(entry["name"], entry["start"], entry["end"]) for entry in document.get("region", [])},
     )

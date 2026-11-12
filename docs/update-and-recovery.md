@@ -89,10 +89,18 @@ leaves the settings layout alone.
 
 ## Rules for patches
 
-- Never touch: startup and the data-init table, the RAM blob (image
-  `0x7a08`), the flash driver, the UART code, and the update handlers
-  (`0x4cfc`, `0x5354`–`0x5690`, `0x7010`–`0x7140`). Patching any of these risks
-  the only recovery path.
+- Patch only inside declared regions. Each patch set lists, in its
+  `sites.toml`, the `analysis/symbols.toml` regions it may touch, and the build
+  refuses any site outside them: today `ui_main_screen` and `code_cave`. The
+  never-patch ranges (startup, scatter loader, vector copy, reset, flash driver,
+  UART parser, frame send, update handlers, slot-base table, data-init table,
+  RAM code and data) stay as a backstop. Patching any of those risks the only
+  recovery path.
+- The code cave is the 192-byte zero block at image `0x7948`–`0x7a08`. The
+  scatter loader copies it to RAM `0x20000000`, and the vector-table copy at
+  `0x1cb4` overwrites exactly those 192 bytes before VTOR points there, so code
+  placed in it runs from flash and is never read as data. Nothing else
+  references it (fact-tested).
 - Patch both slots at the same slot-relative offset. Absolute flash addresses
   differ by `0x7c00` between slots, and so does one instruction immediate
   (`0x1cc0`: `lsls r2, r2, #10` in slot A, `#15` in slot B); a patch must be
