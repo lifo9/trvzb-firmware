@@ -16,7 +16,14 @@ application-MCU part of it actually get written?
   `vers:00001404,00001301` → `vers:00001405,00001302`
 - both slots: the three `1.3.1` version strings → `1.3.2`
 
-No code byte changed. SHA-512 `cc146b65…99820f56`.
+No code byte changed. SHA-512:
+
+```
+cc146b65c5056c0aefc009a282b70ff4dc297424431be420043af8a398384396
+024b1a5c761aa66e7e7041230d18f06c39ff288cb36d538ee1a1e03499820f56
+```
+
+Built with the tools at commit `ef0a73b`.
 
 **Delivery:** served from the Zigbee2MQTT data directory through
 `ota.zigbee_ota_override_index_location: ota/local-index.json`. Zigbee2MQTT
