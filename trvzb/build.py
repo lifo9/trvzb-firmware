@@ -35,6 +35,11 @@ def check_versions(ota: OtaFile, new_mcu_version: McuVersion, new_file_version: 
             f"MCU version {new_mcu_version} must be as long as {current_mcu_version}: "
             "the version strings sit in fixed-size fields"
         )
+    if not f"{new_file_version:08x}".isdecimal():
+        raise BuildRefused(
+            f"file version {new_file_version:#x} must be written with decimal digits only in the header's "
+            "eight-digit field (for example 0x1406-0x1409, then 0x1410)"
+        )
     if new_file_version <= current_file_version:
         raise BuildRefused(
             f"file version {new_file_version:#x} is not above the image's {current_file_version:#x}; "

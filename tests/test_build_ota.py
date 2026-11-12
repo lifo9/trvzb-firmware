@@ -194,3 +194,9 @@ def test_main__identity_patch_set_reproduces_experiment_1_image(stock_ota_path: 
     output_path = tmp_path / "out.ota"
     run_build_ota(stock_ota_path, output_path, patch_set_path=patch_set_path)
     assert hashlib.sha512(output_path.read_bytes()).hexdigest() == EXPERIMENT_1_SHA512
+
+
+def test_main__refuses_a_file_version_the_header_cannot_spell(synthetic_ota: SyntheticOta, tmp_path: Path) -> None:
+    result = run_build_ota(synthetic_ota.path, tmp_path / "out.ota", file_version="0x140a", check=False)
+    assert result.returncode != 0
+    assert "decimal digits" in result.stderr
