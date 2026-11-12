@@ -22,17 +22,16 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import struct
 import sys
 
 # The tools run under `python3 -I` because they read untrusted firmware files,
 # and isolated mode leaves the repository off the import path.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from trvzb.ota import FILE_VERSION_OFFSET, OtaFile  # noqa: E402
-from trvzb.patch import PatchSet, PatchSite  # noqa: E402
+from trvzb.build import BuildRefused, build_image  # noqa: E402
+from trvzb.ota import OtaFile  # noqa: E402
+from trvzb.patch import PatchSet  # noqa: E402
 from trvzb.symbols import load_symbols  # noqa: E402
-from trvzb.version import McuVersion  # noqa: E402
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -47,72 +46,18 @@ def parse_arguments() -> argparse.Namespace:
 def main() -> None:
     arguments = parse_arguments()
     ota = OtaFile()
-    _, current_mcu_field = ota.header_versions()
-    current_mcu_version = McuVersion.from_header_field(current_mcu_field)
-    current_file_version, = struct.unpack_from("<I", ota.data, FILE_VERSION_OFFSET)
-    try:
-        new_mcu_version = McuVersion.parse(arguments.mcu_version)
-    except ValueError as error:
-        raise SystemExit(str(error)) from error
-    new_file_version = int(arguments.file_version, 0)
-
-    if new_mcu_version.packed() <= current_mcu_version.packed():
-        raise SystemExit(
-            f"MCU version {new_mcu_version} (packed {new_mcu_version.packed():#04x}) is not above "
-            f"the image's {current_mcu_version} (packed {current_mcu_version.packed():#04x}); the valve would refuse it"
-        )
-    if len(str(new_mcu_version)) != len(str(current_mcu_version)):
-        raise SystemExit(
-            f"MCU version {new_mcu_version} must be as long as {current_mcu_version}: "
-            "the version strings sit in fixed-size fields"
-        )
-    if new_file_version <= current_file_version:
-        raise SystemExit(
-            f"file version {new_file_version:#x} is not above the image's {current_file_version:#x}; "
-            "Zigbee2MQTT would not offer it"
-        )
-
     print(f"slot length {ota.slot_length:#x}, MCU payload at {ota.mcu_payload_start:#x}")
     print("current header string:", ota.mcu_header_string())
-
-    if arguments.patch_set:
-        logic_patch = PatchSet.from_json(open(arguments.patch_set).read())
-        try:
-            logic_patch.apply(ota, protected_ranges=load_symbols().protected_ranges)
-        except ValueError as error:
-            raise SystemExit(f"patch set {logic_patch.name}: {error}") from error
+    logic_patch = PatchSet.from_json(open(arguments.patch_set).read()) if arguments.patch_set else None
+    try:
+        build_image(ota, arguments.mcu_version, int(arguments.file_version, 0), logic_patch, load_symbols().protected_ranges)
+    except BuildRefused as error:
+        raise SystemExit(str(error)) from error
+    if logic_patch is not None:
         print(f"applied patch set {logic_patch.name}: {[site.name for site in logic_patch.sites]}")
-
-    current_string = str(current_mcu_version).encode()
-    new_string = str(new_mcu_version).encode()
-    occurrences = ota.find_in_slot_a(current_string)
-    print("version string occurrences in slot A:", [hex(offset) for offset in occurrences])
-    if not occurrences:
-        raise SystemExit(f"the image does not contain its version string {current_string!r}")
-    version_patch = PatchSet(
-        name=f"mcu-version-{new_mcu_version}",
-        sites=[
-            PatchSite(
-                name=f"version_string_{offset:#x}",
-                offset=offset,
-                stock_bytes={"A": current_string, "B": current_string},
-                patched_bytes={"A": new_string, "B": new_string},
-            )
-            for offset in occurrences
-        ],
-    )
-    # The version strings are the one change the update handshake requires, and
-    # one of them sits in the UART dispatcher's literal data, inside a protected
-    # range; so this patch set alone is applied without the protected check.
-    version_patch.apply(ota, protected_ranges=[])
-
-    ota.set_file_version(new_file_version)
-    ota.set_header_versions(f"{new_file_version:08x}", new_mcu_version.header_field())
     print("new header string:    ", ota.mcu_header_string())
-
     changed = ota.changed_offsets_against()
     print(f"bytes changed vs input: {len(changed)} -> {[hex(offset) for offset in changed]}")
-
     meta = ota.write(arguments.output)
     print(json.dumps(meta, indent=2))
 
