@@ -1,0 +1,66 @@
+# trvzb-firmware
+
+Reverse engineering of the SONOFF TRVZB thermostatic radiator valve's
+application-MCU firmware, and tooling to rebuild its OTA with a patched
+application image.
+
+The goal is a valve whose physical knob sets the valve opening percentage
+(which the stock firmware cannot do: the knob only moves the temperature
+setpoint, and no Zigbee datapoint commands a position).
+
+## Why it is possible
+
+The OTA file carries two firmwares. The Zigbee SoC's is encrypted and signed;
+the application MCU's — which reads the knob, drives the display and the motor,
+and runs the thermostat — is plain, unsigned code with no checksum. See
+[docs/firmware-layout.md](docs/firmware-layout.md).
+
+## Status
+
+- Analysis: datapoint map, thermostat → valve → motor chain, knob path and
+  display decoded.
+- Delivery: a rebuilt OTA can be served through Zigbee2MQTT's local index.
+- Acceptance test: a version-strings-only image is being flashed — see
+  [docs/experiments.md](docs/experiments.md).
+- Patch (knob sets valve opening degree; woken screen shows valve %, `FU` at
+  100 %): designed, not yet written.
+
+## Setup
+
+Nix with flakes and direnv:
+
+```sh
+direnv allow          # or: nix develop
+just extract          # fetch the pinned stock 1.4.4 OTA into work/ and split the MCU slots
+just summary
+just dis 0x648c       # disassemble a function
+just calls 0x6c18     # every call site of a function
+```
+
+Vendor firmware is never committed; `just fetch` downloads it from a pinned
+zigbee-OTA commit and verifies its SHA-512.
+
+## Addresses
+
+Every address in the tools and docs is an **image offset** into slot A. The
+image is linked at MCU address `0x400`, so MCU address = image offset +
+`0x400`. RAM addresses (`0x2000_xxxx`) are absolute.
+
+## Documents
+
+- [docs/firmware-layout.md](docs/firmware-layout.md) — hardware, OTA container, memory map, RAM structures
+- [docs/datapoints.md](docs/datapoints.md) — datapoint table and its mapping to Zigbee attributes
+- [docs/control-flow.md](docs/control-flow.md) — thermostat → valve → motor, knob, display
+- [docs/update-and-recovery.md](docs/update-and-recovery.md) — how updates reach the MCU, failure modes, patch rules
+- [docs/experiments.md](docs/experiments.md) — flashes performed on a real device
+
+## Tools
+
+- `tools/firmware_map.py` — function discovery, string and literal
+  cross-references, struct field access map, disassembly (`summary`, `strings`,
+  `dis`, `raw`, `find`, `uses`, `fields`, `callers`)
+- `tools/calls.py` — exhaustive `bl` call-site scan, independent of function
+  discovery
+- `tools/extract_mcu_image.py` — split both MCU slots out of an OTA
+- `tools/build_ota.py` — rebuild an OTA with a modified MCU payload, patching
+  both slots identically
