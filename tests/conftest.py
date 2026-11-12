@@ -12,6 +12,7 @@ import pytest
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPOSITORY_ROOT))
+sys.path.insert(0, str(REPOSITORY_ROOT / "tools"))
 
 OTA_MAGIC = 0x0BEEF11E
 OTA_HEADER_LENGTH = 56
@@ -80,4 +81,19 @@ def stock_ota_path() -> Path:
     path = Path(os.environ.get("TRVZB_OTA", REPOSITORY_ROOT / "work" / "trvzb_v1.4.4.ota"))
     if not path.exists():
         pytest.skip("stock OTA not present; run `just fetch`")
+    return path
+
+
+@pytest.fixture(scope="session")
+def stock_slot_a_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Slot A of the stock image, extracted fresh so tests never depend on work/ state."""
+    from trvzb.ota import OtaFile
+
+    ota_path = Path(os.environ.get("TRVZB_OTA", REPOSITORY_ROOT / "work" / "trvzb_v1.4.4.ota"))
+    if not ota_path.exists():
+        pytest.skip("stock OTA not present; run `just fetch`")
+    ota = OtaFile(str(ota_path))
+    start = ota.slot_offset("A")
+    path = tmp_path_factory.mktemp("stock") / "mcu_app_a.bin"
+    path.write_bytes(bytes(ota.data[start : start + ota.slot_length]))
     return path

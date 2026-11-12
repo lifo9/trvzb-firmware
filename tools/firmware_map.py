@@ -1,14 +1,17 @@
 """Static map of the TRVZB application-MCU image (Cortex-M0+, Thumb, 32 KB slot).
 
 The image is slot A of the unencrypted 0xf000 subelement of Sonoff's TRVZB OTA
-file. It is linked at MCU address 0x400 (a factory bootloader owns 0x000-0x3ff),
-but every address this tool prints is an image offset: MCU address = offset +
-0x400. Branches and `adr` are PC-relative and need no translation; absolute
-flash pointers in literal pools do (subtract 0x400 to find the bytes).
+file. It is linked at MCU address 0x400 (a factory bootloader owns 0x000-0x3ff).
+Every address this tool takes or prints is an image offset, except RAM and
+peripheral addresses, which are absolute. Flash pointers found in the image
+(vector table, literal pools, pointer tables) are MCU addresses and are
+translated to image offsets through the slot model in trvzb/image.py.
 
-Functions are found by recursive descent from the vector table, seeded with
-every `bl` target in the image, so code reached only through jump tables may be
-missing; `raw` disassembles any range regardless.
+Functions are found by recursive descent from four kinds of seeds: the vector
+table, every `bl` target, every pointer word that lands on a `push {..., lr}`
+prologue, and the case targets of the compiler's byte switch helper. Code
+reached only some other way may still be missing; `raw` disassembles any range
+regardless.
 """
 
 from __future__ import annotations
@@ -27,11 +30,26 @@ import capstone
 # and isolated mode leaves the repository off the import path.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from trvzb.image import CODE_START, iterate_call_sites  # noqa: E402
+from trvzb.image import CODE_START, SLOT_A, iterate_call_sites  # noqa: E402
 
 IMAGE_PATH = os.environ.get("TRVZB_IMAGE", "work/mcu_app_a.bin")
 RAM_BASE = 0x20000000
 RAM_END = 0x20001000
+VECTOR_COUNT = 48
+
+# ARM Compiler's __ARM_common_switch8 begins `push {r4, r5}; mov r4, lr;
+# subs r4, r4, #1; ldrb r5, [r4]`. After a `bl` to it come one limit byte and
+# then one byte per case; case n continues at (bl address + 4) + 2 * entry[n],
+# and any index at or above the limit takes the last entry.
+SWITCH8_SIGNATURE = bytes.fromhex("30b4 7446 641e 2578")
+
+REGISTER_WRITING_MNEMONICS = {
+    "adcs", "add", "adds", "adr", "ands", "asrs", "bics", "eors", "ldr", "ldrb", "ldrh",
+    "ldrsb", "ldrsh", "lsls", "lsrs", "mov", "movs", "muls", "mvns", "negs", "orrs",
+    "rev", "rev16", "revsh", "rors", "rsbs", "sbcs", "sub", "subs", "sxtb", "sxth",
+    "uxtb", "uxth",
+}
+CALL_CLOBBERED_REGISTERS = {"r0", "r1", "r2", "r3", "r12", "lr"}
 
 
 @dataclass
@@ -50,6 +68,7 @@ class Instruction:
 class Function:
     address: int
     instructions: dict[int, Instruction] = field(default_factory=dict)
+    successors: dict[int, list[int]] = field(default_factory=dict)
     called_functions: set[int] = field(default_factory=set)
     literal_values: dict[int, int] = field(default_factory=dict)
     data_references: dict[int, int] = field(default_factory=dict)
@@ -67,18 +86,34 @@ class FirmwareMap:
         self.functions: dict[int, Function] = {}
         self.callers_of: dict[int, set[int]] = defaultdict(set)
         self.literal_readers: dict[int, set[int]] = defaultdict(set)
+        self.switch8_helpers = {
+            target for _, target in iterate_call_sites(self.image)
+            if self.image[target : target + len(SWITCH8_SIGNATURE)] == SWITCH8_SIGNATURE
+        }
         self._analyze()
 
     def read_word(self, address: int) -> int:
         return struct.unpack_from("<I", self.image, address)[0]
 
+    def flash_offset(self, value: int) -> int | None:
+        """Image offset a flash pointer points at, or None if it is not one."""
+        image_offset = value - SLOT_A.link_base
+        return image_offset if 0 <= image_offset < len(self.image) else None
+
+    def reference_key(self, literal_value: int) -> int:
+        """Key under which a literal is recorded: an image offset for flash, else absolute."""
+        image_offset = self.flash_offset(literal_value)
+        return image_offset if image_offset is not None else literal_value
+
     def vector_table(self) -> list[int]:
-        handler_addresses = []
-        for index in range(1, 48):
+        """Image offsets of the exception and interrupt handlers."""
+        handler_offsets = []
+        for index in range(1, VECTOR_COUNT):
             word = self.read_word(index * 4)
-            if word & 1 and word < len(self.image):
-                handler_addresses.append(word & ~1)
-        return handler_addresses
+            image_offset = self.flash_offset(word & ~1) if word & 1 else None
+            if image_offset is not None:
+                handler_offsets.append(image_offset)
+        return handler_offsets
 
     def _linear_sweep_call_targets(self) -> list[int]:
         """Every `bl` target found by sweeping the image as a flat Thumb stream.
@@ -91,8 +126,30 @@ class FirmwareMap:
             {target for _, target in iterate_call_sites(self.image) if target >= CODE_START and target % 2 == 0}
         )
 
+    def _pointer_seeded_functions(self) -> list[int]:
+        """Functions whose address appears as a Thumb pointer word in the image.
+
+        Reaches handlers that are only ever called through tables, such as the
+        UI screen handlers. A candidate counts only if it starts with a
+        `push {..., lr}` prologue, which keeps data that happens to look like a
+        code pointer out.
+        """
+        seeds = []
+        for word_offset in range(0, len(self.image) - 3, 4):
+            word = self.read_word(word_offset)
+            if not word & 1:
+                continue
+            image_offset = self.flash_offset(word & ~1)
+            if image_offset is None or image_offset < CODE_START:
+                continue
+            first = next(self.disassembler.disasm(self.image[image_offset : image_offset + 4], image_offset, count=1), None)
+            if first is not None and first.mnemonic == "push" and "lr" in first.op_str:
+                seeds.append(image_offset)
+        return seeds
+
     def _analyze(self) -> None:
-        pending = list(dict.fromkeys(self.vector_table() + self._linear_sweep_call_targets()))
+        seeds = self.vector_table() + self._linear_sweep_call_targets() + self._pointer_seeded_functions()
+        pending = list(dict.fromkeys(seeds))
         while pending:
             entry = pending.pop()
             if entry in self.functions:
@@ -104,9 +161,16 @@ class FirmwareMap:
                 if callee not in self.functions and callee < len(self.image):
                     pending.append(callee)
             for value in function.literal_values.values():
-                self.literal_readers[value].add(entry)
-            for value in function.data_references.values():
-                self.literal_readers[value].add(entry)
+                self.literal_readers[self.reference_key(value)].add(entry)
+            for target in function.data_references.values():
+                self.literal_readers[target].add(entry)
+
+    def switch8_case_targets(self, call_address: int) -> list[int]:
+        """Case targets of the byte switch table that follows a `bl` to the helper."""
+        return_address = call_address + 4
+        limit = self.image[return_address]
+        entries = self.image[return_address + 1 : return_address + 2 + limit]
+        return [return_address + 2 * entry for entry in entries]
 
     def _disassemble_function(self, entry: int) -> Function:
         function = Function(address=entry)
@@ -121,6 +185,7 @@ class FirmwareMap:
                     break
                 instruction = Instruction(address, decoded.size, decoded.mnemonic, decoded.op_str)
                 function.instructions[address] = instruction
+                fallthrough = address + decoded.size
                 mnemonic = decoded.mnemonic
                 if mnemonic == "adr" or (mnemonic == "add" and re.search(r"\bpc\b", decoded.op_str)):
                     match = re.search(r"#(-?(?:0x[0-9a-f]+|\d+))", decoded.op_str)
@@ -134,20 +199,33 @@ class FirmwareMap:
                     target = self._branch_target(decoded)
                     if target is not None:
                         function.called_functions.add(target)
+                    if target in self.switch8_helpers:
+                        case_targets = self.switch8_case_targets(address)
+                        function.successors[address] = case_targets
+                        pending_blocks.extend(case_targets)
+                        break
+                    function.successors[address] = [fallthrough]
                 elif mnemonic in ("b", "b.w"):
                     target = self._branch_target(decoded)
                     if target is not None and entry <= target < entry + 0x800:
+                        function.successors[address] = [target]
                         pending_blocks.append(target)
-                    elif target is not None:
-                        function.called_functions.add(target)
+                    else:
+                        function.successors[address] = []
+                        if target is not None:
+                            function.called_functions.add(target)
                     break
-                elif mnemonic.startswith("b") and mnemonic not in ("bx", "blx", "bkpt"):
+                elif mnemonic.startswith("b") and mnemonic not in ("bx", "blx", "bkpt", "bics"):
                     target = self._branch_target(decoded)
+                    function.successors[address] = [fallthrough] + ([target] if target is not None else [])
                     if target is not None:
                         pending_blocks.append(target)
                 elif mnemonic in ("bx", "pop") and ("pc" in decoded.op_str or mnemonic == "bx"):
+                    function.successors[address] = []
                     break
-                address += decoded.size
+                else:
+                    function.successors[address] = [fallthrough]
+                address = fallthrough
 
         return function
 
@@ -191,27 +269,37 @@ class FirmwareMap:
                 return entry
         return None
 
+    def _annotate_literal(self, value: int, texts: dict[int, str]) -> str:
+        annotation = f"  ; ={value:#x}"
+        image_offset = self.flash_offset(value)
+        if image_offset is not None:
+            annotation += f" (image {image_offset:#x})"
+            text = texts.get(image_offset)
+            if text:
+                annotation += f' "{text}"'
+        return annotation
+
+    @staticmethod
+    def _annotate_data_reference(target: int, texts: dict[int, str]) -> str:
+        annotation = f"  ; ->{target:#x}"
+        nearby = [item for item in texts.items() if target <= item[0] <= target + 3]
+        if nearby:
+            annotation += f' "{nearby[0][1]}"'
+        return annotation
+
     def disassemble(self, entry: int) -> str:
         function = self.functions.get(entry)
         if function is None:
             function = self._disassemble_function(entry)
+        texts = self.strings()
         lines = []
         for address in sorted(function.instructions):
             instruction = function.instructions[address]
             annotation = ""
             if address in function.data_references:
-                target = function.data_references[address]
-                annotation = f"  ; ->{target:#x}"
-                nearby = [t for t in self.strings().items() if target <= t[0] <= target + 3]
-                if nearby:
-                    annotation += f' "{nearby[0][1]}"'
+                annotation = self._annotate_data_reference(function.data_references[address], texts)
             if address in function.literal_values:
-                value = function.literal_values[address]
-                annotation = f"  ; ={value:#x}"
-                if value < len(self.image):
-                    text = self.strings().get(value)
-                    if text:
-                        annotation += f' "{text}"'
+                annotation = self._annotate_literal(function.literal_values[address], texts)
             lines.append(f"{address:#07x}  {instruction.text}{annotation}")
         return "\n".join(lines)
 
@@ -230,47 +318,82 @@ class FirmwareMap:
         return references
 
     def field_accesses(self, struct_address: int) -> tuple[dict[int, set[int]], dict[int, set[int]]]:
-        """Functions reading and writing each field of the struct at `struct_address`."""
+        """Functions reading and writing each field of the struct at `struct_address`.
+
+        Tracks, along every control-flow path, which registers may hold the
+        struct's base address, so an access in a branch is attributed even when
+        a different path reuses the register.
+        """
         readers: dict[int, set[int]] = defaultdict(set)
         writers: dict[int, set[int]] = defaultdict(set)
         for entry, function in sorted(self.functions.items()):
-            holding_registers: set[str] = set()
-            for address in sorted(function.instructions):
-                instruction = function.instructions[address]
-                destination = instruction.operands.split(",")[0].strip()
-                if function.literal_values.get(address) == struct_address:
-                    holding_registers.add(destination)
-                    continue
-                access = re.fullmatch(r"(r\d+), \[(r\d+)(?:, #(0x[0-9a-f]+|\d+))?\]", instruction.operands)
-                if access is not None and access.group(2) in holding_registers:
-                    offset = int(access.group(3), 0) if access.group(3) else 0
-                    if instruction.mnemonic.startswith("ldr"):
-                        readers[offset].add(entry)
-                    elif instruction.mnemonic.startswith("str"):
-                        writers[offset].add(entry)
-                    continue
-                if instruction.mnemonic in ("movs", "mov", "ldr", "ldrb", "adds", "subs") and destination in holding_registers:
-                    holding_registers.discard(destination)
+            for _, base_offset, is_write in self._struct_accesses(function, struct_address):
+                (writers if is_write else readers)[base_offset].add(entry)
         return readers, writers
 
+    def _struct_accesses(self, function: Function, struct_address: int) -> list[tuple[int, int, bool]]:
+        """(address, field offset, is_write) of every access through the struct's base."""
+        holding_at: dict[int, frozenset[str]] = {function.address: frozenset()}
+        worklist = [function.address]
+        accesses: set[tuple[int, int, bool]] = set()
+        while worklist:
+            address = worklist.pop()
+            if address not in function.instructions:
+                continue
+            holding = set(holding_at[address])
+            instruction = function.instructions[address]
+            access = re.fullmatch(r"(r\d+|lr), \[(r\d+)(?:, #(0x[0-9a-f]+|\d+))?\]", instruction.operands)
+            destination = instruction.operands.split(",")[0].strip()
+            if function.literal_values.get(address) == struct_address:
+                holding.add(destination)
+            elif access is not None and access.group(2) in holding:
+                offset = int(access.group(3), 0) if access.group(3) else 0
+                is_write = instruction.mnemonic.startswith("str")
+                accesses.add((address, offset, is_write))
+                if not is_write:
+                    holding.discard(destination)
+            elif instruction.mnemonic in ("mov", "movs") and re.fullmatch(r"(r\d+), (r\d+)", instruction.operands):
+                source = instruction.operands.split(",")[1].strip()
+                if source in holding:
+                    holding.add(destination)
+                else:
+                    holding.discard(destination)
+            elif instruction.mnemonic in ("bl", "blx"):
+                holding -= CALL_CLOBBERED_REGISTERS
+            elif instruction.mnemonic == "pop":
+                holding -= set(re.findall(r"r\d+", instruction.operands))
+            elif instruction.mnemonic in REGISTER_WRITING_MNEMONICS:
+                holding.discard(destination)
+            frozen = frozenset(holding)
+            for successor in function.successors.get(address, []):
+                previous = holding_at.get(successor)
+                merged = frozen if previous is None else previous | frozen
+                if merged != previous:
+                    holding_at[successor] = merged
+                    worklist.append(successor)
+        return sorted(accesses)
+
     def raw_listing(self, start: int, length: int) -> list[str]:
-        """Linear disassembly of a byte range, independent of function discovery."""
+        """Linear disassembly of a byte range, independent of function discovery.
+
+        Bytes that do not decode as an instruction are listed as data and the
+        listing continues after them.
+        """
         texts = self.strings()
+        raw_disassembler = capstone.Cs(capstone.CS_ARCH_ARM, capstone.CS_MODE_THUMB | capstone.CS_MODE_MCLASS)
+        raw_disassembler.skipdata = True
         lines = []
-        for decoded in self.disassembler.disasm(self.image[start : start + length], start):
+        for decoded in raw_disassembler.disasm(self.image[start : start + length], start):
             annotation = ""
             if decoded.mnemonic.startswith("ldr") and "[pc," in decoded.op_str:
                 literal_address = self._literal_address(decoded)
                 if literal_address is not None and literal_address + 4 <= len(self.image):
-                    annotation = f"  ; ={self.read_word(literal_address):#x}"
-            if decoded.mnemonic in ("adr",) or (decoded.mnemonic == "add" and "pc" in decoded.op_str):
+                    annotation = self._annotate_literal(self.read_word(literal_address), texts)
+            if decoded.mnemonic == "adr" or (decoded.mnemonic == "add" and "pc" in decoded.op_str):
                 match = re.search(r"#(-?(?:0x[0-9a-f]+|\d+))", decoded.op_str)
                 if match:
                     target = ((decoded.address + 4) & ~3) + int(match.group(1), 0)
-                    annotation = f"  ; ->{target:#x}"
-                    nearby = [t for t in texts.items() if target <= t[0] <= target + 3]
-                    if nearby:
-                        annotation += f' "{nearby[0][1]}"'
+                    annotation = self._annotate_data_reference(target, texts)
             lines.append(f"{decoded.address:#07x}  {decoded.mnemonic} {decoded.op_str}{annotation}")
         return lines
 
@@ -284,10 +407,16 @@ class FirmwareMap:
         return matches
 
     def users_of(self, target: int) -> set[int]:
-        """Functions that load `target` from a literal pool or point `adr` at it."""
+        """Functions that reference `target`: an image offset, or a RAM or peripheral address.
+
+        A code address also matches pointers to it, which carry the Thumb bit.
+        """
+        wanted_keys = {target, target | 1}
         users = set()
         for entry, function in self.functions.items():
-            if target in function.literal_values.values() or target in function.data_references.values():
+            keys = {self.reference_key(value) for value in function.literal_values.values()}
+            keys |= set(function.data_references.values())
+            if keys & wanted_keys:
                 users.add(entry)
         return users
 
@@ -298,6 +427,7 @@ def main() -> None:
     if command == "summary":
         print("functions", len(firmware.functions))
         print("vector handlers", [hex(a) for a in firmware.vector_table()])
+        print("switch8 helpers", [hex(a) for a in sorted(firmware.switch8_helpers)])
         print("\nperipherals:")
         for address, readers in sorted(firmware.peripheral_addresses().items()):
             print(f"  {address:#010x}  read by {len(readers)} fn: {[hex(r) for r in sorted(readers)][:6]}")
