@@ -12,7 +12,8 @@ setpoint, and no Zigbee datapoint commands a position).
 
 The OTA file carries two firmwares. The Zigbee SoC's is encrypted and signed;
 the application MCU's — which reads the knob, drives the display and the motor,
-and runs the thermostat — is plain, unsigned code with no checksum. See
+and runs the thermostat — is plain, unsigned code. The file carries no checksum
+for it; the MCU checks a transfer sum supplied by the Zigbee SoC. See
 [docs/firmware-layout.md](docs/firmware-layout.md).
 
 ## Status

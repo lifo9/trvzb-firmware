@@ -44,22 +44,24 @@ Two subelements follow the header:
 
 ### The application-MCU subelement
 
-A 20-byte big-endian header, then two complete builds of the same program:
+A 20-byte big-endian part table, then two complete builds of the same program:
 
 | Field | 1.4.4 | 1.4.0 |
 |---|---|---|
-| format version | `2` | `2` |
-| header length | `0x14` | `0x14` |
-| slot length | `0x7b64` | `0x7b5c` |
-| slot length + header | `0x7b78` | `0x7b70` |
-| slot length | `0x7b64` | `0x7b5c` |
+| part count | `2` | `2` |
+| part 1 offset, length (slot A) | `0x14`, `0x7b64` | `0x14`, `0x7b5c` |
+| part 2 offset, length (slot B) | `0x7b78`, `0x7b64` | `0x7b70`, `0x7b5c` |
 
-There is no checksum: not in this header, not appended to either slot (CRC32,
-byte sums, word sums and XOR were tested against both possible trailer sizes).
+The update handler `0x5438` parses it as a count followed by (offset, length)
+pairs. The file carries no checksum: not in this table, not appended to either
+slot. Integrity is checked during transfer instead, against a byte sum the
+Zigbee SoC sends (see [update-and-recovery.md](update-and-recovery.md)).
 
 The two builds differ only in link address. Slot B equals slot A with 129 words
-shifted by exactly `+0x7c00` (vector table and internal pointers) plus a
-different build-time string. A patch therefore applies at the same
+shifted by exactly `+0x7c00` (vector table and internal pointers), a
+different build-time string, one instruction immediate (`0x1cc0`: `lsls r2,
+r2, #10` in slot A, `#15` in slot B, deriving the slot base) and one byte of
+a flash pointer inside compressed `.data` (image `0x7b2c`). A patch therefore applies at the same
 slot-relative offset in both slots; only absolute flash pointers it introduces
 need `+0x7c00` in slot B.
 

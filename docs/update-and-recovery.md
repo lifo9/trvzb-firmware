@@ -1,8 +1,9 @@
 # Update path and recovery
 
 What happens when a modified application-MCU image is flashed, and how to get
-back to stock. Statements are marked **proven** (from the image) or
-**inferred** (about parts that cannot be inspected).
+back. Statements are marked **proven** (read from the image) or **inferred**
+(about parts that cannot be inspected: the factory bootloader and the encrypted
+Zigbee SoC firmware).
 
 ## Delivery through Zigbee2MQTT — proven
 
@@ -31,49 +32,75 @@ A minimal index entry:
 The file version must exceed the installed one for an update to be offered.
 For Sonoff image type 8199, Zigbee2MQTT allows up to an hour per update.
 
-## The application MCU never updates itself — proven
+## The application updates itself — proven
 
-- The flash driver (RAM routines at `0x20000100` erase, `0x20000146` program)
-  is reachable only from the settings and `dev_sn` code, which write the data
-  flash at `0x500000+`. The routines do not range-check addresses; the callers
-  do (`0x604c`–`0x6056`).
-- The UART frame dispatcher (`0x4cfc`, parser `0x57b4`) treats Tuya's
-  firmware-upgrade command `0x0a` as a no-op. No code receives or stages an
-  image.
-- Neither slot refers to the other (no `±0x7c00` cross-references), and nothing
-  writes a remap register or a boot flag.
+The application MCU receives its own firmware from the Zigbee SoC over the
+UART and writes it into code flash. There is no separate update program to
+fall back on.
 
-So the **factory bootloader at `0x000`–`0x3ff`** does all MCU updating and slot
-selection. It is not in any OTA file and its policy (image validation, slot
-choice, update window) is unknown — **inferred, unprovable from here**.
+| Step | Code | What it does |
+|---|---|---|
+| Update notification | UART command dispatch `0x4cfc` → `0x55d8` | Receives product id, version, size and expected checksum |
+| Version gate | `0x564a`–`0x5654` | Proceeds only if the notified version is **strictly higher** than its own (`0x4ed4` parses the `1.3.1` string at image `0x4f28`) |
+| Data blocks | `0x4cfc` → `0x5438` | Parses the subelement's part table, picks one slot, writes each block via `0x7108` |
+| Flash write | `0x7108` | Erases each new 512-byte page (`0x354`) and programs the block (`0x348`) at slot base + offset; slot bases come from the table at image `0x77a4`: `0x400`, `0x8000` |
+| Checksum | `0x549c`–`0x54ac`, `0x5500`–`0x5510` | Byte-sums the received stream and compares it with the value from the notification |
+| Commit | `0x53e8`–`0x540c` | Reports, then `0x7010` clears the next bit of a 64-bit update bitmap (RAM `0x200003a0`, persisted to data flash `0x5001f8`), then restarts |
 
-## A/B slots do not provide rollback — proven
+Which slot it writes is chosen by `0x7094`; presumably the slot it is not
+running from. The factory bootloader at `0x000`–`0x3ff` then boots a slot,
+presumably chosen by the bitmap's parity — **inferred**.
 
-Every OTA carries both slots. A successful update writes patched code into
-both. The pairing protects against power loss mid-write, not against a bad
-image: there is no good copy to fall back on.
+### What follows
+
+- **One slot per update.** The previous firmware remains in the other slot.
+  Whether the bootloader ever falls back to it on its own is **unknown**; the
+  bitmap is committed before the restart, so a new image that fails to boot is
+  most likely what the bootloader keeps starting.
+- **Versions only go up.** A device that has accepted MCU version `1.3.2`
+  refuses stock `1.3.1`. Returning to Sonoff's code means stock code re-labelled
+  with a higher version. Every flash consumes a version number.
+- **About 64 updates per device.** Each update clears one bit of the bitmap.
+  When none are left, a separate branch (`0x7048`–`0x7076`) erases and rewrites
+  the bitmap; whether that branch keeps the slot parity right is unverified.
+  Experiments should be frugal.
+- **The checksum is chosen by the Zigbee SoC.** The expected sum arrives in
+  the notification frame. Whether the SoC computes it over the bytes it sends
+  (modified payloads pass) or carries a precomputed value (any modified payload
+  fails, harmlessly) is unknown — experiment 1 decides it.
+- **The update code lives in the image being replaced.** A patched image that
+  breaks booting, the UART link or the update handlers leaves no over-the-air
+  path back.
 
 ## Failure modes
 
 | Mode | Effect | Recovery | Risk |
 |---|---|---|---|
-| Patched app boots but misbehaves | MCU still answers the Zigbee SoC | Flash stock 1.4.4 through Zigbee2MQTT as usual | low |
-| Patched app fails to boot or hangs early | Zigbee SoC stays on the network, datapoints go stale; `0x1122` suggests a fault self-reset loop | Depends entirely on the bootloader opening an update window — unproven. Otherwise SWD pads, if enabled. | medium, unquantifiable |
-| Power loss mid-write (battery device) | The slot being written is corrupt, the other is intact | Fine if the bootloader validates slots; otherwise as above | low-medium |
+| Transfer checksum or version gate rejects the image | Nothing is committed; the running firmware stays | none needed | none |
+| Patched app boots but misbehaves, update path intact | MCU still answers the Zigbee SoC | flash re-labelled stock with a higher version | low |
+| Patched app fails to boot, hangs early, or breaks the UART or update code | Zigbee SoC stays on the network, datapoints go stale | none over the air; SWD pads, if enabled, could restore the previous slot by rewriting the bitmap | high |
+| Power loss mid-write | The slot being written is incomplete, the bitmap not yet committed | presumably the old slot keeps booting — **inferred** | low |
 
 Settings and motor calibration live in data flash at `0x500000`, untouched by
-an application-slot update, so a patch does not force recalibration as long as
-it leaves the settings layout alone.
+an application update, so a patch does not force recalibration as long as it
+leaves the settings layout alone.
 
 ## Rules for patches
 
-- Keep changes out of startup, the RAM blob (image `0x7a08`), the data-init
-  table (`0x7900`), the flash driver, the data-flash layout and the UART code.
-- Patch both slots at the same slot-relative offset; add `+0x7c00` in slot B to
-  any absolute flash pointer the patch introduces.
-- Do not change image length unless the MCU header, the subelement length and
+- Never touch: startup and the data-init table, the RAM blob (image
+  `0x7a08`), the flash driver, the UART code, and the update handlers
+  (`0x4cfc`, `0x5354`–`0x5690`, `0x7010`–`0x7140`). Patching any of these risks
+  the only recovery path.
+- Patch both slots at the same slot-relative offset. Absolute flash addresses
+  differ by `0x7c00` between slots, and so does one instruction immediate
+  (`0x1cc0`: `lsls r2, r2, #10` in slot A, `#15` in slot B); a patch must be
+  able to carry different bytes per slot.
+- Do not change image length unless the part table, the subelement length and
   the total image size are all updated together.
-- Bump the version strings inside the image (`1.3.1` at image `0x4e89`,
-  `0x4f28`, `0x78ef`) together with the OTA header string, so the MCU reports
-  the version the header announces and nothing retries an update in a loop.
-- Test acceptance with a version-string-only image before flashing logic changes.
+- Raise the version with every flash: the strings inside the image (`1.3.1` at
+  image `0x4e89`, `0x4f28`, `0x78ef`) and the OTA header string, together, so
+  the MCU reports what the header announces. Choose the scheme before using
+  numbers up: the string is packed into 2 bits major, 2 bits minor and 4 bits
+  patch, so `1.3.15` is the highest `1.3.x` and `1.4.0` packs *below* `1.3.1`.
+- Test acceptance with a version-string-only image before any logic change.
+- Run a patched handler in an emulator before flashing it.
