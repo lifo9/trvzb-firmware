@@ -35,6 +35,9 @@ Guidelines for agents working in this repository.
    `ota_update/update`. Replace, do not append: the deployment pins the
    installed stock version with an index entry of its own, and Zigbee2MQTT
    uses the first matching entry, so the pin would hide the release.
+   Copy the image into Zigbee2MQTT's `ota/` directory with `kubectl cp` and
+   check its SHA-512 there: piped through `kubectl exec -i … cat >`, it
+   arrived cut off at 98304 bytes.
 5. After the `UpgradeEndRequest` has been aborted, remove the extension,
    restore the pinned index (the next deployment of the Home Assistant stack
    writes it back too) and delete the image from Zigbee2MQTT's `ota/`
